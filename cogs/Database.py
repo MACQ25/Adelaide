@@ -2,6 +2,7 @@ from datetime import datetime as dt
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from discord.ext import commands
+from cogs.SchedulingInteractions import Event
 
 # Didn't use the following install, if problems arise because of the missing [srv] do it later
 # python -m pip install "pymongo[srv]"
@@ -10,31 +11,26 @@ class Database(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.tkn = open("./secrets/mongoAccount.tkn").readline().strip()
+        self.client = MongoClient("mongodb+srv://{}@cluster0.x5r2p5q.mongodb.net/?appName=Cluster0".format(self.tkn), server_api=ServerApi('1'))
 
-    def client_init(self):
-        return MongoClient("mongodb+srv://{}@cluster0.x5r2p5q.mongodb.net/?appName=Cluster0".format(self.tkn), server_api=ServerApi('1'))
 
     async def ping(self):
         # Create a new client and connect to the server
-        client = self.client_init()
         result = False
         # Send a ping to confirm a successful connection
         try:
-            client.admin.command('ping')
+            self.client.admin.command('ping')
             print("Pinged your deployment. You successfully connected to MongoDB!")
             result = True
         except Exception as e:
             print(e)
-        finally:
-            client.close()
-            return result
+
 
     async def check_guilds(self, guilds: list):
-        client = self.client_init()
         now = dt.now()
 
         try:
-            db = client.get_database("scheduling")
+            db = self.client.get_database("scheduling")
 
             for g in guilds:
                 db.guilds.update_one(
@@ -55,8 +51,7 @@ class Database(commands.Cog):
 
         except Exception as e:
             print(e)
-        finally:
-            client.close()
+
 
     async def save_assigned(self, gId, channel):
         client = self.client_init()
@@ -78,8 +73,62 @@ class Database(commands.Cog):
         except Exception as e:
             print(e)
             raise Exception("Failed to update assigned channel") from e
-        finally:
-            client.close()
+
+
+    async def save_event(self, gId, event: Event):
+        try:
+            db = self.client.get_database("scheduling")
+            db.guilds.update_one(
+                filter={'_id': gId },
+                update={
+                    '$push': {
+                        f'event_days.{event.summary}': {
+                            '$each': [
+                                {
+                                    "date": date,
+                                    "starts": event.starts,
+                                    "duration": event.duration
+                                }
+                                for date in event.dates
+                            ]
+                        }
+                     },
+                    '$addToSet': {
+                        f'event_owners.{event.owner}': event.summary,
+                    },
+                    '$set': {
+                        f'event_data.{event.summary}': {
+                                "desc": event.description,
+                                "location": event.location,
+                                "color": event.color,
+                                "frequency": event.frequency
+                        },
+                    }
+                }
+            )
+        except Exception as e:
+            print(e)
+            raise Exception("Failed to create the event") from e
+
+
+    async def get_by_user(self, gId, userId):
+        try:
+            db = self.client.get_database("scheduling")
+            res = db.guilds.find_one(
+                filter={
+                    '_id': gId,
+                    f'event_owners.{userId}': {'$exists': True}
+                },
+                projection={ f"event_owners.{userId}": 1 }
+            )
+            options = res.get('event_owners', {}).get(str(userId), []) if res else []
+            return options
+        except Exception as e:
+            print(e)
+            raise Exception("Failed to create the event") from e
+
+    async def cog_unload(self):
+        self.client.close()
 
 async def setup(bot):
     await bot.add_cog(Database(bot))

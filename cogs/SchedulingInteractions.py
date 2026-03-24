@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os.path
-from importlib.metadata import distribution
-
 import discord
 from discord.app_commands import Choice
 from discord.ext import commands
@@ -66,20 +64,34 @@ def format_dates(dates:str, start_time:int=19):
 
 class Event:
 
-    def __init__(self, owner:int, name:str, description:str, colour:str, mode:str, dates:str, location:str = "The Interwebs",
+    def __init__(self, owner:int, name:str, description:str, colour:str, mode:str, dates:str, starts:int, duration:int, location:str = "The Interwebs",
                  recurrence: tuple = tuple(), attendees: tuple = tuple()):
+        # Unique information saved on its own folder, relational style
         self.owner = owner
-        self.summary = name
-        self.location = location
-        self.description = description
-        self.color = colour
 
+        # Individual information saved also on its own folder
+        self.summary = name
+        self.description = description
+        self.location = location
+        # Saved on the above folder, divided because these are important to be reflected on the calendar
+        self.color = colour
         self.frequency = mode
 
-        self.dates = format_dates(dates)
+        # Saved on a general ID tracked list of dates, based on server
+        self.dates = format_dates(dates, start_time=starts)
+        self.starts = starts
+        self.duration = duration
 
+        # Vestigial, ignore them until further notice
         self.recurrence = recurrence
         self.attendees = attendees
+
+
+    def __str__(self):
+        return (f"Owner: {self.owner}, Summary: {self.summary}, "
+                f"Location: {self.location}, Description: {self.description}, Color: {self.color}, "
+                f"Frequency: {self.frequency}, Dates: {self.dates}, Starts: {self.starts}, Duration: {self.duration}, "
+                f"Recurrence: {self.recurrence}, Attendees: {self.attendees}")
 
 
 class TextModal(ui.Modal, title="Modal Title"):
@@ -204,6 +216,35 @@ class SetDatesButton(ui.Button['EventSettings']):
         await interaction.response.send_modal(DatesModal(self.view, self))
 
 
+class DurationModal(ui.Modal, title='Set hours count'):
+    count = ui.TextInput(label='Count', style=discord.TextStyle.short, default='4', required=True)
+
+    def __init__(self, view: 'EventSettings', button: SetCountButton):
+        super().__init__()
+        self.view = view
+        self.values = view.data
+        self.button = button
+
+    async def on_submit(self, interaction: discord.Interaction[Bot]) -> None:
+        try:
+            self.values.duration = int(self.count.value)
+            self.button.label = str(self.values.duration)
+            await interaction.response.edit_message(view=self.view)
+        except ValueError:
+            await interaction.response.send_message('Invalid count. Please enter a number.', ephemeral=True)
+
+
+class SetCountButton(ui.Button['EventSettings']):
+    def __init__(self, values: Event):
+        super().__init__(label=str(values.duration), style=discord.ButtonStyle.secondary)
+        self.values = values
+
+    async def callback(self, interaction: discord.Interaction[Bot]) -> None:
+        # Tell the type checker that a view is attached already
+        assert self.view is not None
+        await interaction.response.send_modal(DurationModal(self.view, self))
+
+
 class EventSettings(ui.LayoutView):
 
     row = ui.ActionRow()
@@ -251,6 +292,15 @@ class EventSettings(ui.LayoutView):
         )
         container.add_item(FrequencySelect(self.data))
 
+        container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
+        self.count_button = SetCountButton(self.data)
+        container.add_item(
+            ui.Section(
+                ui.TextDisplay('## Event Duration\n-# This is the number of hours the event will last (only reflected in discord UI).'),
+                accessory=self.count_button,
+            )
+        )
+
         self.add_item(container)
 
         # Swap the row so it's at the end
@@ -266,18 +316,26 @@ class EventSettings(ui.LayoutView):
         await interaction.followup.send(f'Settings saved.', ephemeral=True)
         # Then delete the settings panel
         self.stop()
+        interaction.client.dispatch("ext_event_creation", interaction.guild_id,interaction.user, self.data)
+
         await interaction.delete_original_response()
 
 
-class CalendarL(commands.Cog):
+class SchedulingInteractions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        db_access = self.bot.get_cog("Database")
+        owned = await db_access.get_by_user(interaction.guild_id, interaction.user.id)
+        return [ app_commands.Choice(name=item, value=item) for item in owned ]
+
 
     @app_commands.command(name="check", description="helper function to check if database is currently available")
     async def check(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         db_access = self.bot.get_cog("Database")
-        await db_access.ping()
+        await db_access.get_by_user(interaction.guild_id, interaction.user.id)
         await interaction.followup.send("Done!", ephemeral=True)
 
 
@@ -295,6 +353,7 @@ class CalendarL(commands.Cog):
         finally:
             await interaction.followup.send(result_msg, ephemeral=True)
 
+
     @app_commands.command(name="create", description="opens modal for event creation")
     @app_commands.choices(
         color=[c.as_choice() for c in EventColor],
@@ -310,10 +369,11 @@ class CalendarL(commands.Cog):
         mode="Frequency with which the event happens (picked is specific dates)",
         dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed",
         color="Color with which you want the event to be associated (Calendar specific)",
-        start="",
-        duration=""
+        starts="Start time of event, in 24 hour format (Defaults to 7 p.m)",
+        duration="Duration of event in hours (Defaults to 4)"
     )
-    async def create(self, interaction: discord.Interaction, name:str, dates:str, color: app_commands.Choice[str]=None, mode:int=1, desc:str=""):
+    @app_commands.autocomplete(name=owned_events_autocomplete)
+    async def create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, color: app_commands.Choice[str]=None, mode:int=1, desc:str=""):
         """Shows the settings view."""
         await interaction.response.defer(ephemeral=True)
 
@@ -325,7 +385,9 @@ class CalendarL(commands.Cog):
                 description=desc,
                 colour=chosen,
                 mode=str(mode),
-                dates=dates
+                dates=dates,
+                starts=starts,
+                duration=duration
             )
             view = EventSettings(event)
             await interaction.followup.send(view=view, ephemeral=True)
@@ -336,4 +398,4 @@ class CalendarL(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(CalendarL(bot))
+    await bot.add_cog(SchedulingInteractions(bot))
