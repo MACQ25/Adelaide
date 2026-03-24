@@ -309,7 +309,9 @@ class CalendarL(commands.Cog):
         desc="A brief description of the event",
         mode="Frequency with which the event happens (picked is specific dates)",
         dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed",
-        color="Color with which you want the event to be associated (Calendar specific)"
+        color="Color with which you want the event to be associated (Calendar specific)",
+        start="",
+        duration=""
     )
     async def create(self, interaction: discord.Interaction, name:str, dates:str, color: app_commands.Choice[str]=None, mode:int=1, desc:str=""):
         """Shows the settings view."""
