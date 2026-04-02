@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw, ImageFont
 import datetime
-from datetime import date
+from datetime import date as dt
 import calendar
 import asyncio
 from functools import partial
@@ -10,15 +10,16 @@ Basically taken from the following Stack Overflow question
 https://stackoverflow.com/questions/70420891/how-do-i-create-a-calendar-using-pillow-in-python
 """
 
-async def draw(date_object: date, guild_id: int):
-    #font = ImageFont.truetype("arialbd.ttf", 12)
+async def draw(guild_id: int, events: list):
+    weekdays = ImageFont.truetype("arialbd.ttf", 32)
+    font = ImageFont.truetype("arialbd.ttf", 16)
 
-    w, h = 720, 600
+    w, h = 1420, 1200
 
     img = Image.new("RGB",(w,h), (255,255,255))
     draw = ImageDraw.Draw(img)
 
-    top_span = 20
+    top_span = 80
     border = 10
     h_start = border + top_span
     h_end = h - border
@@ -41,7 +42,7 @@ async def draw(date_object: date, guild_id: int):
     for x in range(border, w, stepsizeV):
         if i < 7:
             cols.append(x + stepsizeV / 10)
-            draw.text((x + stepsizeV / 2 - 10, h_start - top_span), days[i], fill=(0, 0, 0)) #, font=font)
+            draw.text((x + (stepsizeV / 2) - 30, top_span/2), days[i], fill=(0, 0, 0), font=weekdays)
         i += 1
 
 
@@ -50,22 +51,28 @@ async def draw(date_object: date, guild_id: int):
         rows.append(x + stepsizeH // 10)
         draw.line(line, fill=50, width=3)
 
-    current_date = date_object.today()
+    current_date = dt.today()
     date =int(current_date.strftime('%d'))
     month = int(current_date.strftime('%m'))
     year = int(current_date.strftime('%y'))
 
     month_len = calendar.monthrange(year, month)
-    k = (date_object.today().replace(day=1).weekday() + 1) % 7
+    k = (dt.today().replace(day=1).weekday() + 1) % 7
     i = 1
     j = 0
     r = rows[j]
     while i <= month_len[1]:
         c = cols[k]
-        draw.text((c,r), str(i), fill=(0, 0, 0)) #, font=font)
-        ### CODE HERE FOR EVENTS ###
-        #draw.rounded_rectangle()
-        ###
+        draw.text((c,r), str(i), fill=(0, 0, 0), font=font)
+
+        internal_x_offset = c + 160
+        for n, ent in enumerate(events[i - 1]):
+            # This calculation is 100% the worst thing ever but its a funny kludge if ever
+            internal_y_offset = r - 15 + (40 * (n + 1)) + (10 * n)
+
+            draw.rounded_rectangle((c, internal_y_offset, internal_x_offset, internal_y_offset + 40), radius=10, fill=ent[1])
+            draw.text(((c + internal_x_offset)//2, (internal_y_offset + internal_y_offset + 40)//2), ent[0], fill=(0, 0, 0), font=font, anchor="mm")
+
         i += 1
         k = (k + 1) % 7
         if not k:

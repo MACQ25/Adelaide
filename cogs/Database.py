@@ -38,13 +38,11 @@ class Database(commands.Cog):
                     update={
                         '$setOnInsert': {
                             'insertion_date': now,
-                        },
-                        '$set': {
                             '_id': g.id,
                             'name': g.name,
                             'assigned_channel': 'n/a',
                             'last_update_date': now,
-                        },
+                        }
                     },
                     upsert=True
                 )
@@ -54,11 +52,8 @@ class Database(commands.Cog):
 
 
     async def save_assigned(self, gId, channel):
-        client = self.client_init()
-        now = dt.now()
-
         try:
-            db = client.get_database("scheduling")
+            db = self.client.get_database("scheduling")
             db.guilds.update_one(
                 filter={'_id': gId },
                 update={
@@ -95,13 +90,13 @@ class Database(commands.Cog):
                      },
                     '$addToSet': {
                         f'event_owners.{event.owner}': event.summary,
-                    },
-                    '$set': {
-                        f'event_data.{event.summary}': {
-                                "desc": event.description,
-                                "location": event.location,
-                                "color": event.color,
-                                "frequency": event.frequency
+                        'event_data': {
+                            "name": event.summary,
+                            "desc": event.description,
+                            "location": event.location,
+                            "color": event.color,
+                            "frequency": event.frequency,
+                            "active": True
                         },
                     }
                 }
@@ -126,6 +121,39 @@ class Database(commands.Cog):
         except Exception as e:
             print(e)
             raise Exception("Failed to create the event") from e
+
+
+    async def get_events(self, gId):
+        try:
+            db = self.client.get_database("scheduling")
+            res = db.guilds.aggregate([
+                {"$match": {"_id": gId}},
+                {"$project": {
+                    "assigned_channel": 1,
+                    "event_data": {
+                        "$map": {
+                            "input": {
+                                "$filter": {
+                                    "input": "$event_data",
+                                    "as": "event",
+                                    "cond": {"$eq": ["$$event.active", True]}
+                                }
+                            },
+                            "as": "event",
+                            "in": {
+                                "name": "$$event.name",
+                                "color": "$$event.color"
+                            }
+                        }
+                    },
+                    "event_days": 1
+                }}
+            ]).next()
+            return res
+        except Exception as e:
+            print(e)
+            raise Exception("Failed to acquire events")
+
 
     async def cog_unload(self):
         self.client.close()

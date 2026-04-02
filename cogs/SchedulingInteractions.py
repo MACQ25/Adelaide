@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import os.path
 import discord
-from discord.app_commands import Choice
 from discord.ext import commands
 from discord.ext.commands import Context, Bot
 from discord import app_commands, ui
 import datetime as dt
-from dataclasses import dataclass, field
-from typing import List, Optional, Union
 import enum
 
 class EventColor(enum.Enum):
@@ -83,8 +79,8 @@ class Event:
         self.duration = duration
 
         # Vestigial, ignore them until further notice
-        self.recurrence = recurrence
-        self.attendees = attendees
+        # self.recurrence = recurrence
+        # self.attendees = attendees
 
 
     def __str__(self):
@@ -316,7 +312,7 @@ class EventSettings(ui.LayoutView):
         await interaction.followup.send(f'Settings saved.', ephemeral=True)
         # Then delete the settings panel
         self.stop()
-        interaction.client.dispatch("ext_event_creation", interaction.guild_id,interaction.user, self.data)
+        interaction.client.dispatch("ext_event_creation", interaction, self.data)
 
         await interaction.delete_original_response()
 
@@ -324,18 +320,17 @@ class EventSettings(ui.LayoutView):
 class SchedulingInteractions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.db = bot.get_cog("Database")
 
     async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-        db_access = self.bot.get_cog("Database")
-        owned = await db_access.get_by_user(interaction.guild_id, interaction.user.id)
+        owned = await self.db.get_by_user(interaction.guild_id, interaction.user.id)
         return [ app_commands.Choice(name=item, value=item) for item in owned ]
 
 
     @app_commands.command(name="check", description="helper function to check if database is currently available")
     async def check(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        db_access = self.bot.get_cog("Database")
-        await db_access.get_by_user(interaction.guild_id, interaction.user.id)
+        await self.db.get_by_user(interaction.guild_id, interaction.user.id)
         await interaction.followup.send("Done!", ephemeral=True)
 
 
@@ -343,15 +338,18 @@ class SchedulingInteractions(commands.Cog):
                           description="Assigns a discord channel to which the bot will publish scheduled events")
     async def assign_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         await interaction.response.defer(ephemeral=True)
-        db_access = self.bot.get_cog("Database")
         result_msg = ""
+        send_update_out = False
         try:
-            await db_access.save_assigned(interaction.guild.id, channel)
+            await self.db.save_assigned(interaction.guild.id, channel)
             result_msg = "Channel updated to {}".format(channel)
+            send_update_out = True
         except Exception as e:
             result_msg = "Could not update to target channel"
         finally:
             await interaction.followup.send(result_msg, ephemeral=True)
+            if send_update_out:
+                interaction.client.dispatch("update_calendar", interaction)
 
 
     @app_commands.command(name="create", description="opens modal for event creation")

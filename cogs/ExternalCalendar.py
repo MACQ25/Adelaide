@@ -1,8 +1,7 @@
-import datetime
-
+import calendar
+from datetime import datetime as dt
 import discord
 from discord.ext import commands
-from discord.ext.commands import Context, Bot
 from discord import app_commands, ui
 from cogs.SchedulingInteractions import Event
 from CalendarImageGen import draw
@@ -10,21 +9,78 @@ from CalendarImageGen import draw
 class ExternalCalendar(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.db = bot.get_cog("Database")
+
 
     @commands.Cog.listener()
-    async def on_ext_event_creation(self, guild_id: int, user: discord.User, event: Event):
-        db_access = self.bot.get_cog("Database")
+    async def on_update_calendar(self, interaction: discord.Interaction):
+        data =  await self.db.get_events(interaction.guild_id)
+
+        current_day = dt.today()
+        event_labels = [list() for _ in range(calendar.monthrange(current_day.year, current_day.month)[1])]
+
+        colors = {e["name"]: e["color"] for e in data.get("event_data", [])}
+
+        for pair in data.get("event_days").items():
+            for ev in pair[1]:
+                event_labels[dt.fromisoformat(ev.get('date').split()[0]).day - 1].append([pair[0], colors[pair[0]]])
+
+        img = await draw(guild_id=interaction.guild_id, events=event_labels)
+
+        assigned_id = data.get("assigned_channel")
+        if assigned_id != 'n/a':
+
+            for ch in interaction.guild.text_channels:
+                try:
+                    ch_pins = await ch.pins()
+                    for msg in ch_pins:
+                        if msg.author.id == interaction.client.user.id:
+                            await msg.unpin()
+                            await msg.delete()
+                except discord.Forbidden:
+                    continue  # skip channels the bot can't access
+
+            channel = await interaction.client.fetch_channel(assigned_id.get('channel_id'))
+
+            file = discord.File(img, filename="Calendar.jpeg")
+            embed = discord.Embed(title=f"📅 {dt.now().strftime("%B")} Calendar", color=discord.Color.blue())
+            embed.set_image(url="attachment://Calendar.jpeg")
+            embed.set_footer(text=f"Last updated: {dt.today().strftime('%Y-%m-%d %H:%M')}")
+
+            msg = await channel.send(embed=embed, file=file)
+            await msg.pin()
+
+            await interaction.followup.send("updated on assigned channel!", ephemeral=True)
+        else:
+            await interaction.followup.send(file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
+
+
+    @commands.Cog.listener()
+    async def on_ext_event_creation(self, interaction: discord.Interaction, event: Event):
         try:
-            await db_access.save_event(guild_id, event)
+
+            if int(event.frequency) == 3:
+                event.dates = [event.dates[0]]
+            elif int(event.frequency) == 2:
+                starting_from = dt.fromisoformat(event.dates[0])
+                c_month = calendar.monthrange(starting_from.year, starting_from.month)
+                new_batch = list()
+                # Adding a +1 hoping no bugs to arise when it comes to February
+                for x in range(starting_from.day, c_month[1] + 1, 7):
+                    new_batch.append(starting_from.replace(day=x).__str__())
+                event.dates = new_batch
+            await self.db.save_event(interaction.guild_id, event)
         except Exception as e:
             print("exception found on listener")
+        finally:
+            interaction.client.dispatch("update_calendar", interaction)
 
 
     @app_commands.command(name="force_refresh", description="Forces a refresh of the pinned calendar")
     async def fr(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        img = await draw(date_object=datetime.date, guild_id=interaction.guild_id)
-        await interaction.followup.send(file=discord.File(img, "Calendar.jpeg"))
+        interaction.client.dispatch("update_calendar", interaction)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ExternalCalendar(bot))
