@@ -3,7 +3,7 @@ from datetime import datetime as dt
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-from cogs.SchedulingInteractions import Event
+from objects.Event import Event
 from CalendarImageGen import draw
 
 class ExternalCalendar(commands.Cog):
@@ -22,6 +22,8 @@ class ExternalCalendar(commands.Cog):
         colors = {e["name"]: e["color"] for e in data.get("event_data", [])}
 
         for pair in data.get("event_days").items():
+            if pair[0] not in colors:
+                continue
             for ev in pair[1]:
                 event_labels[dt.fromisoformat(ev.get('date').split()[0]).day - 1].append([pair[0], colors[pair[0]]])
 
@@ -36,6 +38,10 @@ class ExternalCalendar(commands.Cog):
                     for msg in ch_pins:
                         if msg.author.id == interaction.client.user.id:
                             await msg.unpin()
+                            await msg.delete()
+
+                    async for msg in ch.history(limit=100):
+                        if msg.type == discord.MessageType.pins_add and msg.author.id == interaction.client.user.id:
                             await msg.delete()
                 except discord.Forbidden:
                     continue  # skip channels the bot can't access
@@ -76,7 +82,49 @@ class ExternalCalendar(commands.Cog):
             interaction.client.dispatch("update_calendar", interaction)
 
 
-    @app_commands.command(name="force_refresh", description="Forces a refresh of the pinned calendar")
+    @commands.Cog.listener()
+    async def on_ext_event_q_creation(self, interaction: discord.Interaction, event_name:str, dates:list, starts:int, duration:int):
+        success: bool
+        success = await self.db.quick_create(interaction.guild_id, interaction.user.id, event_name, dates, starts, duration)
+        if success:
+            interaction.client.dispatch("update_calendar", interaction)
+        else:
+            await interaction.followup.send("Something went wrong while processing this request")
+
+
+    @commands.Cog.listener()
+    async def on_ext_event_cancellation(self, interaction: discord.Interaction, event_name:str, targets:list, all_flag:bool):
+        success: bool
+        if all_flag:
+            success = await self.db.delete_by_class(interaction.guild_id, interaction.user.id, event_name)
+        else:
+            success = await self.db.delete_set(interaction.guild_id, interaction.user.id, event_name, targets)
+
+        if success:
+            interaction.client.dispatch("update_calendar", interaction)
+        else:
+            await interaction.followup.send("Something went wrong while processing this request")
+
+
+    @commands.Cog.listener()
+    async def on_ext_event_hiatus(self, interaction: discord.Interaction, event_name:str, to_fro:bool):
+        success = await self.db.update_to_inactive(interaction.guild_id, interaction.user.id, event_name, to_fro)
+        if success:
+            interaction.client.dispatch("update_calendar", interaction)
+        else:
+            await interaction.followup.send("Something went wrong while processing this request")
+
+
+    @commands.Cog.listener()
+    async def on_ext_event_full_clean(self, interaction: discord.Interaction, event_name:str):
+        success = await self.db.delete_full(interaction.guild_id, interaction.user.id, event_name)
+        if success:
+            interaction.client.dispatch("update_calendar", interaction)
+        else:
+            await interaction.followup.send("Something went wrong while processing this request")
+
+
+    @app_commands.command(name="force-refresh", description="Forces a refresh of the pinned calendar")
     async def fr(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         interaction.client.dispatch("update_calendar", interaction)

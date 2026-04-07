@@ -33,12 +33,8 @@ async def on_ready():
 async def on_guild_join(guild):
     db_access = bot.get_cog("Database")
     if db_access is not None:
-        await db_access.check_guilds(list(guild))
+        await db_access.check_guilds([guild])
 
-
-@bot.command()
-async def hi(ctx):
-    await ctx.send("Henlo!")
 
 @bot.command()
 @commands.is_owner()

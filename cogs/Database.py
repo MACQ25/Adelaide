@@ -2,26 +2,23 @@ from datetime import datetime as dt
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from discord.ext import commands
-from cogs.SchedulingInteractions import Event
+from objects.Event import Event
 
 # Didn't use the following install, if problems arise because of the missing [srv] do it later
 # python -m pip install "pymongo[srv]"
 
 class Database(commands.Cog):
     def __init__(self, bot):
+
         self.bot = bot
         self.tkn = open("./secrets/mongoAccount.tkn").readline().strip()
         self.client = MongoClient("mongodb+srv://{}@cluster0.x5r2p5q.mongodb.net/?appName=Cluster0".format(self.tkn), server_api=ServerApi('1'))
 
 
     async def ping(self):
-        # Create a new client and connect to the server
-        result = False
-        # Send a ping to confirm a successful connection
         try:
             self.client.admin.command('ping')
             print("Pinged your deployment. You successfully connected to MongoDB!")
-            result = True
         except Exception as e:
             print(e)
 
@@ -51,11 +48,11 @@ class Database(commands.Cog):
             print(e)
 
 
-    async def save_assigned(self, gId, channel):
+    async def save_assigned(self, g_id, channel):
         try:
             db = self.client.get_database("scheduling")
             db.guilds.update_one(
-                filter={'_id': gId },
+                filter={'_id': g_id},
                 update={
                     '$set': {
                         'assigned_channel': {
@@ -70,11 +67,11 @@ class Database(commands.Cog):
             raise Exception("Failed to update assigned channel") from e
 
 
-    async def save_event(self, gId, event: Event):
+    async def save_event(self, g_id, event: Event):
         try:
             db = self.client.get_database("scheduling")
             db.guilds.update_one(
-                filter={'_id': gId },
+                filter={'_id': g_id},
                 update={
                     '$push': {
                         f'event_days.{event.summary}': {
@@ -106,21 +103,163 @@ class Database(commands.Cog):
             raise Exception("Failed to create the event") from e
 
 
-    async def get_by_user(self, gId, userId):
+    async def quick_create(self, g_id, user_id, event_name, dates, starts_at, duration):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                {
+                    "_id": g_id,
+                    f"event_owners.{user_id}": event_name,
+                },
+                update={
+                    '$push': {
+                        f'event_days.{event_name}': {
+                            '$each': [
+                                {
+                                    "date": d,
+                                    "starts": starts_at,
+                                    "duration": duration
+                                }
+                                for d in dates
+                            ]
+                        }
+                    }
+                }
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event.")
+                return False
+
+            return True
+
+        except Exception as e:
+            print(e)
+
+
+    async def get_by_user(self, g_id, user_id):
         try:
             db = self.client.get_database("scheduling")
             res = db.guilds.find_one(
                 filter={
-                    '_id': gId,
-                    f'event_owners.{userId}': {'$exists': True}
+                    '_id': g_id,
+                    f'event_owners.{user_id}': {'$exists': True}
                 },
-                projection={ f"event_owners.{userId}": 1 }
+                projection={ f"event_owners.{user_id}": 1}
             )
-            options = res.get('event_owners', {}).get(str(userId), []) if res else []
+            options = res.get('event_owners', {}).get(str(user_id), []) if res else []
             return options
         except Exception as e:
             print(e)
             raise Exception("Failed to create the event") from e
+
+
+    async def get_by_class(self, g_id, event_name):
+        try:
+            db = self.client.get_database("scheduling")
+            res = db.guilds.find_one(
+                filter={
+                    '_id': g_id,
+                    f'event_days.{event_name}': {'$exists': True}
+                },
+                projection={ f"event_days.{event_name}": 1 }
+            )
+            options = res.get('event_days', {}).get(str(event_name), []) if res else []
+
+            options = [ dt.strptime(val.get('date'), "%Y-%m-%d %H:%M:%S").date().strftime("%B %d of %Y")  for val in options ]
+
+            return options
+        except Exception as e:
+            print(e)
+            raise Exception("Failed to create the event") from e
+
+
+    async def delete_set(self, g_id, user_id, event_name, list_of_indexes):
+        try:
+            db = self.client.get_database("scheduling")
+
+            # Step 1: Unset all target indexes in one update
+            unset_dict = {f"event_days.{event_name}.{i}": "" for i in list_of_indexes}
+            result = db.guilds.update_one(
+                {"_id": g_id, f"event_owners.{user_id}": event_name},
+                {"$unset": unset_dict}
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event.")
+                return False
+
+            # Step 2: Pull all nulls out
+            result = db.guilds.update_one({"_id": g_id}, {"$pull": {f"event_days.{event_name}": None}})
+
+            return True
+        except Exception as e:
+            print(e)
+
+
+    async def delete_by_class(self, g_id, user_id, event_name):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                {"_id": g_id, f"event_owners.{user_id}": event_name},
+                      update={"$set": { f"event_days.{event_name}" : [] }}
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event.")
+                return False
+            return True
+
+        except Exception as e:
+            print(e)
+
+
+    async def delete_full(self, g_id, user_id, event_name):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                {"_id": g_id, f"event_owners.{user_id}": event_name},
+                update= {
+                    "$unset":
+                        {
+                          f"event_days.{event_name}": ""
+                        },
+                    "$pull": {
+                        "event_data": {"name": event_name},
+                        f"event_owners.{user_id}": event_name,
+                    }
+                }
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event.")
+                return False
+            return True
+
+        except Exception as e:
+            print(e)
+
+
+    async def update_to_inactive(self, g_id, user_id, event_name, val:bool):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                {"_id": g_id, f"event_owners.{user_id}": event_name, "event_data.name": event_name},
+                update={"$set": { f"event_data.$.active": val}}
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event.")
+                return False
+
+            return True
+
+        except Exception as e:
+            print(e)
 
 
     async def get_events(self, gId):
