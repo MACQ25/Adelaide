@@ -1,4 +1,9 @@
 import datetime as dt
+from dataclasses import field
+from typing import List, Union
+
+import discord
+
 
 def format_dates(dates:str, start_time:int=19):
     date_list = dates.split(",")
@@ -41,13 +46,32 @@ class Event:
         self.starts = starts
         self.duration = duration
 
+        # for channel event functions
+        self.channel = None
+        self.section = ""
+        self.text_channel = ""
+        self.voice_channel = ""
+
+        self.members: List[Union[discord.Member, discord.User]] = []
+
         # Vestigial, ignore them until further notice
         # self.recurrence = recurrence
-        # self.attendees = attendees
+        # self.attendees = attendee
 
 
     def __str__(self):
         return (f"Owner: {self.owner}, Summary: {self.summary}, "
                 f"Location: {self.location}, Description: {self.description}, Color: {self.color}, "
                 f"Frequency: {self.frequency}, Dates: {self.dates}, Starts: {self.starts}, Duration: {self.duration}, "
-                f"Recurrence: {self.recurrence}, Attendees: {self.attendees}")
+                f"Channel: {self.channel}, Members: {self.members}"
+                f"Section: {self.section}, Text_Channel: {self.text_channel}, Voice_Channel: {self.voice_channel}")
+
+
+    def mode_change_cleanup(self):
+        self.section = ""
+        self.text_channel = ""
+        self.voice_channel = ""
+
+    def owner_check(self, owner: discord.User):
+        if owner not in self.members:
+           self.members = self.members + [owner]

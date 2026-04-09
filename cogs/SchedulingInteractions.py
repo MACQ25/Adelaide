@@ -122,7 +122,7 @@ class SchedulingInteractions(commands.Cog):
                 starts=starts,
                 duration=duration
             )
-            view = EventSettings(event)
+            view = EventSettings(interaction.user, event)
             await interaction.followup.send(view=view, ephemeral=True)
         except TypeError:
             await interaction.followup.send(content="User didnt enter a number in one of the dates", ephemeral=True)
@@ -150,7 +150,26 @@ class SchedulingInteractions(commands.Cog):
     )
     @app_commands.autocomplete(name=owned_events_autocomplete)
     async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, color: app_commands.Choice[str]=None, mode:int=1, desc:str=""):
-        pass
+        await interaction.response.defer(ephemeral=True)
+
+        chosen = color.value if color else discord.Color.random().__str__()
+        try:
+            event = Event(
+                owner=interaction.user.id,
+                name=name,
+                description=desc,
+                colour=chosen,
+                mode=str(mode),
+                dates=dates,
+                starts=starts,
+                duration=duration
+            )
+            view = EventSettings(interaction.user, event, True)
+            await interaction.followup.send(view=view, ephemeral=True)
+        except TypeError:
+            await interaction.followup.send(content="User didnt enter a number in one of the dates", ephemeral=True)
+        except ValueError:
+            await interaction.followup.send(content="User didnt enter a valid date amongst the provided ones", ephemeral=True)
 
 
     @app_commands.command(name="cq", description="Schedules events based on pre-existing one from the user, skipping the modal")
