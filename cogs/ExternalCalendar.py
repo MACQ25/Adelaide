@@ -2,9 +2,12 @@ import calendar
 from datetime import datetime as dt
 import discord
 from discord.ext import commands
-from discord import app_commands, ui
+from discord import app_commands, ui, Button
+from discord.ui import View
 from objects.Event import Event
 from CalendarImageGen import draw
+from cogs.InternalEvents import role_deletion
+
 
 class ExternalCalendar(commands.Cog):
     def __init__(self, bot):
@@ -20,6 +23,7 @@ class ExternalCalendar(commands.Cog):
         event_labels = [list() for _ in range(calendar.monthrange(current_day.year, current_day.month)[1])]
 
         colors = {e["name"]: e["color"] for e in data.get("event_data", [])}
+        #roles = [r.get('role_id') for r in data.get("event_data", []) if 'role_id' in r]
 
         for pair in data.get("event_days").items():
             if pair[0] not in colors:
@@ -31,7 +35,6 @@ class ExternalCalendar(commands.Cog):
 
         assigned_id = data.get("assigned_channel")
         if assigned_id != 'n/a':
-
             for ch in interaction.guild.text_channels:
                 try:
                     ch_pins = await ch.pins()
@@ -45,12 +48,15 @@ class ExternalCalendar(commands.Cog):
                             await msg.delete()
                 except discord.Forbidden:
                     continue  # skip channels the bot can't access
+                except discord.NotFound:
+                    continue
 
             channel = await interaction.client.fetch_channel(assigned_id.get('channel_id'))
 
             file = discord.File(img, filename="Calendar.jpeg")
             embed = discord.Embed(title=f"📅 {dt.now().strftime("%B")} Calendar", color=discord.Color.blue())
             embed.set_image(url="attachment://Calendar.jpeg")
+            embed.description = "Scheduled Events: " + ", ".join(f"<@&{r.get('role_id')}>" for r in data.get("event_data", []) if 'role_id' in r)
             embed.set_footer(text=f"Last updated: {dt.today().strftime('%Y-%m-%d %H:%M')}")
 
             msg = await channel.send(embed=embed, file=file)
@@ -64,6 +70,7 @@ class ExternalCalendar(commands.Cog):
     @commands.Cog.listener()
     async def on_ext_event_creation(self, interaction: discord.Interaction, event: Event):
         try:
+            # role = await guild.create_role(name=event.summary, color=discord.Color.from_str(event.color))
 
             if int(event.frequency) == 3:
                 event.dates = [event.dates[0]]
@@ -80,6 +87,14 @@ class ExternalCalendar(commands.Cog):
             print("exception found on listener")
         finally:
             interaction.client.dispatch("update_calendar", interaction)
+            if event.role is not None:
+                interaction.client.dispatch(
+                    "notify_invitations",
+                    interaction,
+                    event.role,
+                    event.text_channel if event.created_for_event else event.voice_channel,
+                    event.members
+                )
 
 
     @commands.Cog.listener()
@@ -117,8 +132,17 @@ class ExternalCalendar(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ext_event_full_clean(self, interaction: discord.Interaction, event_name:str):
-        success = await self.db.delete_full(interaction.guild_id, interaction.user.id, event_name)
-        if success:
+        int_data = await self.db.get_internal(interaction.guild_id, interaction.user.id, event_name)
+        event_data = int_data.get("event_data")
+
+        interaction.client.dispatch("remove_scheduled", interaction, int_data.get("event_days"))
+        await role_deletion(interaction, event_data.get("role_id"))
+
+        if event_data.get("event_owns_it"):
+            interaction.client.dispatch("remove_channels", interaction, event_data)
+
+        ext_success = await self.db.delete_full(interaction.guild_id, interaction.user.id, event_name)
+        if ext_success:
             interaction.client.dispatch("update_calendar", interaction)
         else:
             await interaction.followup.send("Something went wrong while processing this request")

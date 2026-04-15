@@ -71,6 +71,8 @@ class CustomizeModal(ui.Modal, title="Set Custom Color"):
             self.values.custom_set = str(self.colorInput.value)
             self.values.color = str(self.colorInput.value)
             self.view.color_select.sync_custom_state()
+
+            self.view.finish_button.disabled = not self.view.is_valid
             await interaction.response.edit_message(view=self.view)
         except ValueError:
             await interaction.response.send_message('Something Went Wrong.', ephemeral=True)
@@ -116,6 +118,8 @@ class ColorSetting(ui.ActionRow['EventSettings']):
             self.values.custom_modified = False
             self.values.color = select.values[0]
         self.update_options()
+
+        self.view.finish_button.disabled = not self.view.is_valid
         await interaction.response.edit_message(view=self.view)
 
 
@@ -140,6 +144,7 @@ class FrequencySelect(ui.ActionRow['EventSettings']):
     async def select_mode(self, interaction: discord.Interaction[Bot], select: discord.ui.Select) -> None:
         self.values.frequency = select.values[0]
         self.update_frequency()
+
         await interaction.response.edit_message(view=self.view)
 
 
@@ -159,6 +164,8 @@ class DatesModal(ui.Modal, title="Modal Title"):
     async def on_submit(self, interaction: discord.Interaction[Bot]) -> None:
         try:
             self.values.dates = [d.strip() for d in self.datesInput.value.split(",") if d.strip()]
+
+            self.view.finish_button.disabled = not self.view.is_valid
             await interaction.response.edit_message(view=self.view)
         except ValueError:
             await interaction.response.send_message('Something Went Wrong.', ephemeral=True)
@@ -191,6 +198,8 @@ class DurationModal(ui.Modal, title='Set hours count'):
         try:
             self.values.duration = int(self.count.value)
             self.button.label = str(self.values.duration)
+
+            self.view.finish_button.disabled = not self.view.is_valid
             await interaction.response.edit_message(view=self.view)
         except ValueError:
             await interaction.response.send_message('Invalid count. Please enter a number.', ephemeral=True)
@@ -256,6 +265,8 @@ class ChannelSetting(ui.ActionRow['EventSettings']):
         else:
             self.data.channel = None
             select.default_values = []
+
+        self.view.finish_button.disabled = not self.view.is_valid
         await interaction.response.edit_message(view=self.view)
 
 
@@ -276,6 +287,8 @@ class MembersSetting(ui.ActionRow['EventSettings']):
         self.data.members = select.values
         self.data.owner_check(interaction.user)
         self.update_options()
+
+        self.view.finish_button.disabled = not self.view.is_valid
         await interaction.response.edit_message(view=self.view)
 
 
@@ -304,6 +317,7 @@ class AdvCreationModal(ui.Modal, title="Create a Specific Zone for "):
             self.view.data.text_channel = self.channelInput.value
             self.view.data.voice_channel = self.vcInput.value
 
+            self.view.finish_button.disabled = not self.view.is_valid
             await interaction.response.edit_message(view=self.view)
         except ValueError:
             await interaction.response.send_message('Something Went Wrong.', ephemeral=True)
@@ -319,8 +333,23 @@ class AdvCreationButton(ui.Button['EventSettings']):
         await interaction.response.send_modal(AdvCreationModal(self.view))
 
 
-
 class EventSettings(ui.LayoutView):
+
+    @property
+    def is_valid(self) -> bool:
+        channel_valid = (self.data.channel or (
+                self.data.section and (self.data.text_channel or self.data.voice_channel)
+        ))
+
+        return all([
+            self.data.summary,
+            self.data.color,
+            self.data.frequency,
+            len(self.data.dates) > 0,
+            str(self.data.duration).isnumeric(),
+            self.data.duration,
+            (channel_valid if self.full_featured else True),
+            ])
 
     row = ui.ActionRow()
 
@@ -329,7 +358,7 @@ class EventSettings(ui.LayoutView):
 
         self.data = data
         self.interaction_owner = owner
-        self.channel_flag = True
+        self.channel_flag = False
         self.full_featured = full_featured
 
         self.event_name_btn = SetTextButton(self.data, "summary", "Set Title", "Set a new title", self.data.summary)
@@ -415,6 +444,7 @@ class EventSettings(ui.LayoutView):
             container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
 
             if self.channel_flag:
+                #self.data.toggle_channel_feature(False)
                 container.add_item(
                     ui.Section(
                         ui.TextDisplay('### Configure New Section and Channel\'s information'),
@@ -422,7 +452,7 @@ class EventSettings(ui.LayoutView):
                     )
                 )
             else:
-                self.data.mode_change_cleanup()
+                #self.data.toggle_channel_feature(True)
                 container.add_item(ui.TextDisplay('### Channel Selection\n-# This is the channel where the message will be sent.'))
                 container.add_item(ChannelSetting(self.data))
 
@@ -439,7 +469,9 @@ class EventSettings(ui.LayoutView):
 
         # Swap the row so it's at the end
         self.remove_item(self.row)
+        self.remove_item(self.row)
         self.add_item(self.row)
+        self.finish_button.disabled = not self.is_valid
 
 
     @row.button(label='Finish', style=discord.ButtonStyle.green)
@@ -449,13 +481,21 @@ class EventSettings(ui.LayoutView):
         # ...and then send a confirmation message.
         await interaction.followup.send(f'Settings saved.', ephemeral=True)
 
+        # Then delete the settings panel
+        self.stop()
+
         if self.data.custom_modified:
             self.data.color = self.data.custom_set
 
-        # Then delete the settings panel
-        self.stop()
         self.data.owner_check(interaction.user)
-        print(self.data)
-        #interaction.client.dispatch("ext_event_creation", interaction, self.data)
+
+        if self.full_featured:
+            self.data.created_for_event = self.channel_flag
+            if self.channel_flag:
+                interaction.client.dispatch("event_channel_creation", interaction, self.data)
+            else:
+                interaction.client.dispatch("event_full_creation_scheduling", interaction, self.data)
+        else:
+            interaction.client.dispatch("ext_event_creation", interaction, self.data)
 
         await interaction.delete_original_response()

@@ -35,6 +35,11 @@ async def on_guild_join(guild):
     if db_access is not None:
         await db_access.check_guilds([guild])
 
+@bot.event
+async def on_error(event, *args, **kwargs):
+    print(f"Error in {event}:", args, **kwargs)
+    raise
+
 
 @bot.command()
 @commands.is_owner()

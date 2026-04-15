@@ -26,15 +26,13 @@ def format_dates(dates:str, start_time:int=19):
 
 class Event:
 
-    def __init__(self, owner:int, name:str, description:str, colour:str, mode:str, dates:str, starts:int, duration:int, location:str = "The Interwebs",
-                 recurrence: tuple = tuple(), attendees: tuple = tuple()):
+    def __init__(self, owner:int, name:str, description:str, mode:str, dates:str, starts:int, duration:int, colour:str = None):
         # Unique information saved on its own folder, relational style
         self.owner = owner
 
         # Individual information saved also on its own folder
         self.summary = name
         self.description = description
-        self.location = location
         # Saved on the above folder, divided because these are important to be reflected on the calendar
         self.color = colour
         self.custom_modified = False
@@ -48,11 +46,14 @@ class Event:
 
         # for channel event functions
         self.channel = None
-        self.section = ""
-        self.text_channel = ""
-        self.voice_channel = ""
+        self.section = None
+        self.text_channel = None
+        self.voice_channel = None
+        self.created_for_event = None
 
+        self.role = None
         self.members: List[Union[discord.Member, discord.User]] = []
+        self.int_evt = []
 
         # Vestigial, ignore them until further notice
         # self.recurrence = recurrence
@@ -67,11 +68,18 @@ class Event:
                 f"Section: {self.section}, Text_Channel: {self.text_channel}, Voice_Channel: {self.voice_channel}")
 
 
-    def mode_change_cleanup(self):
-        self.section = ""
-        self.text_channel = ""
-        self.voice_channel = ""
-
     def owner_check(self, owner: discord.User):
         if owner not in self.members:
            self.members = self.members + [owner]
+
+    def check_adv_present(self):
+        return isinstance(self.section, int) and (isinstance(self.text_channel, int) or isinstance(self.voice_channel, int))
+
+    def toggle_channel_feature(self, create_mode: bool):
+        if create_mode:
+            self.section = f'{self.summary}'
+            self.text_channel = f'{self.summary} general'
+            self.voice_channel = f'{self.summary} vc'
+            self.channel = None
+        else:
+            self.section, self.text_channel, self.voice_channel = None, None, None
