@@ -6,7 +6,7 @@ from discord import app_commands, ui, Button
 from discord.ui import View
 from objects.Event import Event
 from CalendarImageGen import draw
-from cogs.InternalEvents import role_deletion
+from cogs.InternalEvents import role_deletion, scheduled_events
 
 
 class ExternalCalendar(commands.Cog):
@@ -23,7 +23,6 @@ class ExternalCalendar(commands.Cog):
         event_labels = [list() for _ in range(calendar.monthrange(current_day.year, current_day.month)[1])]
 
         colors = {e["name"]: e["color"] for e in data.get("event_data", [])}
-        #roles = [r.get('role_id') for r in data.get("event_data", []) if 'role_id' in r]
 
         for pair in data.get("event_days").items():
             if pair[0] not in colors:
@@ -98,9 +97,9 @@ class ExternalCalendar(commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_ext_event_q_creation(self, interaction: discord.Interaction, event_name:str, dates:list, starts:int, duration:int):
+    async def on_ext_event_q_creation(self, interaction: discord.Interaction, event_name:str, dates:list, starts:int, duration:int, int_events_id:list=None):
         success: bool
-        success = await self.db.quick_create(interaction.guild_id, interaction.user.id, event_name, dates, starts, duration)
+        success = await self.db.quick_create(interaction.guild_id, interaction.user.id, event_name, dates, starts, duration, int_events_id)
         if success:
             interaction.client.dispatch("update_calendar", interaction)
         else:
@@ -110,32 +109,63 @@ class ExternalCalendar(commands.Cog):
     @commands.Cog.listener()
     async def on_ext_event_cancellation(self, interaction: discord.Interaction, event_name:str, targets:list, all_flag:bool):
         success: bool
+        internals = None
+
         if all_flag:
+            internals = await self.db.get_all_internal_id(interaction.guild_id, interaction.user.id, event_name)
             success = await self.db.delete_by_class(interaction.guild_id, interaction.user.id, event_name)
         else:
+            internals = await self.db.get_date_internals(interaction.guild_id, event_name, targets)
             success = await self.db.delete_set(interaction.guild_id, interaction.user.id, event_name, targets)
 
+
         if success:
+            if internals and len(internals) > 0:
+                interaction.client.dispatch("remove_scheduled", interaction, internals)
             interaction.client.dispatch("update_calendar", interaction)
         else:
             await interaction.followup.send("Something went wrong while processing this request")
 
 
     @commands.Cog.listener()
-    async def on_ext_event_hiatus(self, interaction: discord.Interaction, event_name:str, to_fro:bool):
-        success = await self.db.update_to_inactive(interaction.guild_id, interaction.user.id, event_name, to_fro)
+    async def on_ext_event_hiatus(self, interaction: discord.Interaction, event_name:str, active:bool):
+        success = await self.db.update_to_inactive(interaction.guild_id, interaction.user.id, event_name, active)
         if success:
             interaction.client.dispatch("update_calendar", interaction)
+
+            if not active:
+                internals = await self.db.get_all_internal_id(interaction.guild_id, interaction.user.id, event_name)
+                if internals and len(internals) > 0:
+                    interaction.client.dispatch("remove_scheduled", interaction, internals)
+                    await self.db.delete_internal_id(interaction.guild_id, interaction.user.id, event_name)
+            else:
+                scheduled: dict = await self.db.get_by_class(interaction.guild_id, event_name)
+                event_data = await self.db.get_internal_data(interaction.guild_id, interaction.user.id, event_name)
+                if event_data and event_data.get("vc_id"):
+
+                    c_channel = interaction.guild.get_channel(event_data.get("vc_id"))
+                    days = [d.get("date") for d in scheduled]
+                    duration = [d.get("duration") for d in scheduled]
+
+                    n_id = await scheduled_events(event_name, event_data.get("desc"), days, duration, interaction.guild, c_channel, interaction.user)
+
+                    if len([r for r in n_id if r > 0]) > 0:
+                        for ind, ev in enumerate(scheduled):
+                            if n_id[ind] > 0:
+                                ev["internal_id"] = n_id[ind]
+                        await self.db.update_dates(interaction.guild_id, event_name, scheduled)
         else:
-            await interaction.followup.send("Something went wrong while processing this request")
+            await interaction.followup.send("The event is already inactive or you dont have the permissions to perform this action")
 
 
     @commands.Cog.listener()
     async def on_ext_event_full_clean(self, interaction: discord.Interaction, event_name:str):
-        int_data = await self.db.get_internal(interaction.guild_id, interaction.user.id, event_name)
-        event_data = int_data.get("event_data")
+        event_data = await self.db.get_internal_data(interaction.guild_id, interaction.user.id, event_name)
+        date_id = await self.db.get_all_internal_id(interaction.guild_id, interaction.user.id, event_name)
 
-        interaction.client.dispatch("remove_scheduled", interaction, int_data.get("event_days"))
+        if date_id and len(date_id) > 0:
+            interaction.client.dispatch("remove_scheduled", interaction, date_id)
+
         await role_deletion(interaction, event_data.get("role_id"))
 
         if event_data.get("event_owns_it"):

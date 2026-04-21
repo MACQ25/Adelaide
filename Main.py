@@ -1,8 +1,12 @@
+import datetime as dt
+from typing import Callable, Optional
+
 import discord
 from aiohttp.log import client_logger
 from discord.ext import commands
 import os
 import asyncio
+import calendar
 
 from discord.ext.commands import Context
 
@@ -21,12 +25,12 @@ async def on_ready():
     print(f'Logged in as {bot.user} (ID: {bot.user.id})')
     print('--- God Save The Queen! ---')
 
-
     db_access = bot.get_cog("Database")
     bot_reg = [g async for g in bot.fetch_guilds()]
 
     if db_access is not None:
         await db_access.check_guilds(bot_reg)
+        bot.loop.create_task(perform_cleanup(db_access.clean_old))
 
 
 @bot.event
@@ -34,6 +38,7 @@ async def on_guild_join(guild):
     db_access = bot.get_cog("Database")
     if db_access is not None:
         await db_access.check_guilds([guild])
+
 
 @bot.event
 async def on_error(event, *args, **kwargs):
@@ -50,6 +55,18 @@ async def sync(ctx: Context):
     await msg.edit(content="Synced!")
 
 
+async def perform_cleanup(cleanup_func: Optional[Callable] = None):
+    while True:
+        c_time = dt.datetime.today()
+        month_len = calendar.monthrange(c_time.year, c_time.month)
+        time_to_next = ((month_len[1] - c_time.day) * 86400) + (86400 - ((((c_time.hour * 60) + c_time.minute) * 60) + c_time.second))
+        print(c_time)
+        print(f"{time_to_next} seconds til next execution")
+        await asyncio.sleep(30)
+        if cleanup_func is not None:
+            await cleanup_func()
+
+
 tkn = open("secrets/token.tkn").readline().strip()
 
 
@@ -58,11 +75,11 @@ async def load():
         if filename.endswith(".py"):
             await bot.load_extension(f"cogs.{filename[:-3]}")
 
+
 async def main():
     async with bot:
         await load()
         await bot.start(tkn)
-
 
 
 asyncio.run(main())

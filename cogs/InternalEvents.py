@@ -1,12 +1,8 @@
 import datetime as dt
 
 import discord
-from discord.app_commands import guilds
 from discord.ext import commands
-from discord.ext.commands import Context, Bot
-from discord import app_commands, ui
-from unicodedata import category
-
+from typing import Callable, Optional
 from objects.Event import Event
 
 
@@ -38,9 +34,36 @@ async def role_deletion(interaction: discord.Interaction, role_id: int):
     await guild.get_role(role_id).delete(reason="Event type is being deleted")
 
 
+async def scheduled_events(ev_name: str, ev_description: str, dates: list, duration:int|list, guild: discord.Guild, channel: discord.VoiceChannel, user: discord.User):
+    id_list = []
+
+    for ind, date in enumerate(dates):
+        date_obj = dt.datetime.strptime(date, "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
+
+        if date_obj > dt.datetime.now().replace(tzinfo=dt.timezone.utc):
+
+            s_event = await guild.create_scheduled_event(
+                name=ev_name,
+                description=ev_description,
+                start_time=date_obj,
+                end_time=date_obj + dt.timedelta(hours=int(duration[ind] if isinstance(duration, list) else duration)),
+                entity_type=discord.EntityType.voice,
+                channel=channel,
+                privacy_level=discord.PrivacyLevel.guild_only,
+            )
+            id_list.append(s_event.id)
+        else:
+            id_list.append(-1)
+
+    return id_list
+
+
+
 class InternalEvents(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.db = bot.get_cog("Database")
+
 
     @commands.Cog.listener()
     async def on_event_channel_creation(self, interaction: discord.Interaction, event: Event):
@@ -68,21 +91,7 @@ class InternalEvents(commands.Cog):
             guild = interaction.guild
             c_channel = guild.get_channel(event.voice_channel)
 
-            for date in event.dates:
-                date_obj = dt.datetime.strptime(date, "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
-
-                s_event = await guild.create_scheduled_event(
-                    name=event.summary,
-                    description=event.description,
-                    start_time=date_obj,
-                    end_time=date_obj + dt.timedelta(hours=int(event.duration)),
-                    entity_type=discord.EntityType.voice,
-                    channel=c_channel,
-                    privacy_level=discord.PrivacyLevel.guild_only,
-                )
-                s_event._add_user(interaction.user)
-
-                event.int_evt.append(s_event.id)
+            event.int_evt = await scheduled_events(event.summary, event.description, event.dates, event.duration, guild, c_channel, interaction.user)
 
             event.role = await role_creation(interaction, event)
             interaction.client.dispatch("ext_event_creation", interaction, event)
@@ -100,8 +109,13 @@ class InternalEvents(commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_quick_creation(self, event_name:str, dates:list, starts:int, duration:int):
-        pass
+    async def on_quick_creation(self, interaction: discord.Interaction, event_name:str, dates:list, starts:int, duration:int):
+        event_data = await self.db.get_internal_data(interaction.guild_id, interaction.user.id, event_name)
+
+        if event_data and event_data.get("vc_id"):
+            c_channel = interaction.guild.get_channel(event_data.get("vc_id"))
+            internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, interaction.guild, c_channel, interaction.user)
+            interaction.client.dispatch("ext_event_q_creation", interaction, event_name, dates, starts, duration, internal_id)
 
 
     @commands.Cog.listener()

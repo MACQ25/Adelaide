@@ -7,6 +7,7 @@ from objects.Event import Event
 # Didn't use the following install, if problems arise because of the missing [srv] do it later
 # python -m pip install "pymongo[srv]"
 
+
 class Database(commands.Cog):
     def __init__(self, bot):
 
@@ -129,49 +130,12 @@ class Database(commands.Cog):
                     }
                 )
 
-            """
-            db.guilds.update_one(
-                filter={'_id': g_id},
-                update={
-                    '$push': {
-                        f'event_days.{event.summary}': {
-                            '$each': [
-                                {
-                                    "date": date,
-                                    "starts": dt.strptime(date, "%Y-%m-%d %H:%M:%S").hour,
-                                    "duration": event.duration,
-                                    "internal_id": event.int_evt[ind] if len(event.int_evt) > ind else None
-                                }
-                                for ind, date in enumerate(event.dates)
-                            ]
-                        }
-                     },
-                    '$addToSet': {
-                        f'event_owners.{event.owner}': event.summary,
-                        'event_data': {
-                            "name": event.summary,
-                            "desc": event.description,
-                            "channel": {
-                                "section_id": event.section if event.section else None,
-                                "text_id":  event.text_channel if event.text_channel else None,
-                                "vc_id": event.channel.id if event.channel else event.voice_channel,
-                                "event_owns_it": event.created_for_event
-                            } if event.channel or event.check_adv_present() else {},
-                            "color": event.color,
-                            "frequency": event.frequency,
-                            "active": True,
-                            "role_id": event.role
-                        },
-                    }
-                }
-            )
-            """
         except Exception as e:
             print(e)
             raise Exception("Failed to create the event") from e
 
 
-    async def quick_create(self, g_id, user_id, event_name, dates, starts_at, duration):
+    async def quick_create(self, g_id, user_id, event_name, dates, starts_at, duration, internal_id_list:list=None):
         try:
             db = self.client.get_database("scheduling")
 
@@ -187,9 +151,10 @@ class Database(commands.Cog):
                                 {
                                     "date": d,
                                     "starts": starts_at,
-                                    "duration": duration
+                                    "duration": duration,
+                                    "internal_id": internal_id_list[i] if internal_id_list and len(internal_id_list) > i else None
                                 }
-                                for d in dates
+                                for i, d in enumerate(dates)
                             ]
                         }
                     }
@@ -217,6 +182,39 @@ class Database(commands.Cog):
         except Exception as e:
             print(e)
             raise Exception("Failed to create the event") from e
+
+
+    async def get_events(self, gId):
+            try:
+                db = self.client.get_database("scheduling")
+                res = db.guilds.aggregate([
+                    {"$match": {"_id": gId}},
+                    {"$project": {
+                        "assigned_channel": 1,
+                        "event_data": {
+                            "$map": {
+                                "input": {
+                                    "$filter": {
+                                        "input": "$event_data",
+                                        "as": "event",
+                                        "cond": {"$eq": ["$$event.active", True]}
+                                    }
+                                },
+                                "as": "event",
+                                "in": {
+                                    "name": "$$event.name",
+                                    "color": "$$event.color",
+                                    "role_id": "$$event.role_id"
+                                }
+                            }
+                        },
+                        "event_days": 1
+                    }}
+                ]).next()
+                return res
+            except Exception as e:
+                print(e)
+                raise Exception("Failed to acquire events")
 
 
     async def get_by_user(self, g_id, user_id):
@@ -248,15 +246,39 @@ class Database(commands.Cog):
             )
             options = res.get('event_days', {}).get(str(event_name), []) if res else []
 
-            options = [ dt.strptime(val.get('date'), "%Y-%m-%d %H:%M:%S").date().strftime("%B %d of %Y")  for val in options ]
-
             return options
         except Exception as e:
             print(e)
             raise Exception("Failed to create the event") from e
 
 
-    async def get_internal(self, g_id, user_id, event_name):
+    async def get_date_internals(self, g_id, event_name, indexes):
+        try:
+            db = self.client.get_database("scheduling")
+
+            res = db.guilds.find_one(
+                filter={
+                    '_id': g_id,
+                    f'event_days.{event_name}': {'$exists': True}
+                },
+                projection={
+                    "event_days": {
+                        "$map": {
+                            "input": [{"$arrayElemAt": [f"$event_days.{event_name}", i]} for i in indexes],
+                            "as": "dates",
+                            "in": "$$dates.internal_id"
+                        }
+                    }
+                }
+            )
+
+            return res.get("event_days")
+        except Exception as e:
+            print(e)
+        raise Exception("Failed to create the event") from e
+
+
+    async def get_internal_data(self, g_id, user_id, event_name):
         try:
             db = self.client.get_database("scheduling")
 
@@ -283,28 +305,53 @@ class Database(commands.Cog):
                                         "section_id": "$$event.channel.section_id",
                                         "text_id": "$$event.channel.text_id",
                                         "vc_id": "$$event.channel.vc_id",
+                                        "desc": "$$event.desc",
                                         "role_id": "$$event.role_id"
                                     }
                                 }
                             }, 0
                         ]
                     },
+                }
+            )
+
+            return result.get("event_data")
+        except Exception as e:
+            print(e)
+
+
+    async def get_all_internal_id(self, g_id, user_id, event_name):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.find_one(
+                filter={
+                    '_id': g_id,
+                    f'event_owners.{user_id}': {'$exists': True}
+                },
+                projection={
                     "event_days": {
-                        "$map": {
+                        "$filter": {
                             "input": {
-                                "$getField": {
-                                    "field": event_name,
-                                    "input": "$event_days"
+                                "$map": {
+                                    "input": {
+                                        "$getField": {
+                                            "field": event_name,
+                                            "input": "$event_days"
+                                        }
+                                    },
+                                    "as": "dates",
+                                    "in": "$$dates.internal_id"
                                 }
                             },
-                            "as": "dates",
-                            "in": "$$dates.internal_id"
+                            "as": "id",
+                            "cond": {"$ne": ["$$id", None]}
                         }
                     }
                 }
             )
 
-            return result
+            return result.get("event_days")
         except Exception as e:
             print(e)
 
@@ -376,17 +423,51 @@ class Database(commands.Cog):
             print(e)
 
 
+    async def delete_internal_id(self, g_id, user_id, event_name):
+        try:
+            db = self.client.get_database("scheduling")
+            result = db.guilds.update_one(
+                {"_id": g_id, f"event_owners.{user_id}": event_name},
+                update= {
+                    "$unset": {f"event_days.{event_name}.$[].internal_id": None}
+                }
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event.")
+                return False
+            return True
+
+        except Exception as e:
+            print(e)
+
+
+    async def clean_old(self):
+        print("CLEANING UP!!!")
+
+
     async def update_to_inactive(self, g_id, user_id, event_name, val:bool):
         try:
             db = self.client.get_database("scheduling")
 
             result = db.guilds.update_one(
-                {"_id": g_id, f"event_owners.{user_id}": event_name, "event_data.name": event_name},
-                update={"$set": { f"event_data.$.active": val}}
+                filter={
+                    "$and": [
+                        {"_id": g_id},
+                        {f"event_owners.{user_id}": {"$elemMatch": {"$eq": event_name}}},
+                        {"event_data": {"$elemMatch": {"name": {"$eq": event_name}, "active": {"$ne": val}}}}
+                    ]
+                },
+                update={
+                    "$set": {
+                        "event_data.$[element].active": val
+                    }
+                },
+                array_filters=[{ "element.name": { "$eq" : event_name}}]
             )
 
             if result.matched_count == 0:
-                print("Operation denied: user does not own this event.")
+                print("Operation denied: user does not own this event or change would be null")
                 return False
 
             return True
@@ -395,41 +476,31 @@ class Database(commands.Cog):
             print(e)
 
 
-    async def get_events(self, gId):
+    async def update_dates(self, g_id, event_name, dates):
         try:
             db = self.client.get_database("scheduling")
-            res = db.guilds.aggregate([
-                {"$match": {"_id": gId}},
-                {"$project": {
-                    "assigned_channel": 1,
-                    "event_data": {
-                        "$map": {
-                            "input": {
-                                "$filter": {
-                                    "input": "$event_data",
-                                    "as": "event",
-                                    "cond": {"$eq": ["$$event.active", True]}
-                                }
-                            },
-                            "as": "event",
-                            "in": {
-                                "name": "$$event.name",
-                                "color": "$$event.color",
-                                "role_id": "$$event.role_id"
-                            }
-                        }
-                    },
-                    "event_days": 1
-                }}
-            ]).next()
-            return res
+
+            db.guilds.update_one(
+                filter={
+                    "$and": [
+                        {"_id": g_id},
+                        {"event_data": {"$elemMatch": {"name": {"$eq": event_name}}}}
+                    ]
+                },
+                update={
+                    "$set": {
+                        f"event_days.{event_name}": dates
+                    }
+                }
+            )
+
         except Exception as e:
             print(e)
-            raise Exception("Failed to acquire events")
 
 
     async def cog_unload(self):
         self.client.close()
+
 
 async def setup(bot):
     await bot.add_cog(Database(bot))

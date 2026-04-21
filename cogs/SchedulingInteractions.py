@@ -6,7 +6,7 @@ from discord import app_commands
 from objects.Event import Event, format_dates
 from objects.EventColorEnum import EventColor
 from objects.EventSettingsUI import EventSettings
-
+from datetime import datetime as dt
 
 class SchedulingInteractions(commands.Cog):
     def __init__(self, bot):
@@ -21,6 +21,8 @@ class SchedulingInteractions(commands.Cog):
     async def event_dates_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         evt_name = interaction.namespace.name
         scheduled = await self.db.get_by_class(interaction.guild_id, evt_name)
+
+        scheduled = [ dt.strptime(val.get('date'), "%Y-%m-%d %H:%M:%S").date().strftime("%B %d of %Y")  for val in scheduled ]
 
         entered_dates = [d.strip() for d in interaction.namespace.dates.split(",")]
         registered_values = [str(i) for i, n in enumerate(scheduled) if n in entered_dates]
@@ -175,9 +177,17 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.command(name="cq", description="Schedules events based on pre-existing one from the user, skipping the modal")
     @app_commands.describe( name="The name of the event", dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed" )
     @app_commands.autocomplete(name=owned_events_autocomplete)
-    async def quick_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4):
+    async def quick_create(self, interaction: discord.Interaction, name:str, dates:str):
         await interaction.response.defer(ephemeral=True)
-        interaction.client.dispatch("ext_event_q_creation", interaction, name, format_dates(dates), starts, duration)
+        interaction.client.dispatch("ext_event_q_creation", interaction, name, format_dates(dates), 19, 4)
+
+
+    @app_commands.command(name="fcq", description="Full Scheduling of an event the user owns, skips the modal")
+    @app_commands.describe( name="The name of the event", dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed", start_time="Start time of the event to create", duration="Duration of the event, in hours")
+    @app_commands.autocomplete(name=owned_events_autocomplete)
+    async def quick_full_create(self, interaction: discord.Interaction, name:str, dates:str, start_time:int=19, duration:int=4):
+        await interaction.response.defer(ephemeral=True)
+        interaction.client.dispatch("quick_creation", interaction, name, format_dates(dates, start_time), start_time, duration)
 
 
     @app_commands.command(name="cancel", description="Drops one or more scheduled dates for one specific event type")
