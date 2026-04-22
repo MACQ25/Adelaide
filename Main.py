@@ -55,6 +55,15 @@ async def sync(ctx: Context):
     await msg.edit(content="Synced!")
 
 
+async def issue_updates():
+    db = bot.get_cog("Database")
+    to_update = await db.get_all_with_assigned() if db is not None else []
+    update_cog = bot.get_cog("ExternalCalendar")
+
+    for _id in to_update:
+        await update_cog.update_calendar(_id)
+
+
 async def perform_cleanup(cleanup_func: Optional[Callable] = None):
     while True:
         c_time = dt.datetime.today()
@@ -62,9 +71,10 @@ async def perform_cleanup(cleanup_func: Optional[Callable] = None):
         time_to_next = ((month_len[1] - c_time.day) * 86400) + (86400 - ((((c_time.hour * 60) + c_time.minute) * 60) + c_time.second))
         print(c_time)
         print(f"{time_to_next} seconds til next execution")
-        await asyncio.sleep(30)
+        await asyncio.sleep(time_to_next)
         if cleanup_func is not None:
             await cleanup_func()
+            asyncio.create_task(issue_updates())
 
 
 tkn = open("secrets/token.tkn").readline().strip()

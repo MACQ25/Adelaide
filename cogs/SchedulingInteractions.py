@@ -86,7 +86,7 @@ class SchedulingInteractions(commands.Cog):
         finally:
             await interaction.followup.send(result_msg, ephemeral=True)
             if send_update_out:
-                interaction.client.dispatch("update_calendar", interaction)
+                await self.bot.get_cog("ExternalCalendar").update_calendar(interaction.guild.id, interaction)
 
 
     @app_commands.command(name="create", description="opens modal for event creation")

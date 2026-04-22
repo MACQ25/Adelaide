@@ -1,4 +1,4 @@
-from datetime import datetime as dt
+from datetime import datetime as dt, timezone
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from discord.ext import commands
@@ -97,7 +97,7 @@ class Database(commands.Cog):
             # 2. Add dates and owner only if not already present
             new_dates = [
                 {
-                    "date": date,
+                    "date": dt.strptime(date, "%Y-%m-%d %H:%M:%S"),
                     "starts": dt.strptime(date, "%Y-%m-%d %H:%M:%S").hour,
                     "duration": event.duration,
                     "internal_id": event.int_evt[ind] if len(event.int_evt) > ind else None
@@ -149,7 +149,7 @@ class Database(commands.Cog):
                         f'event_days.{event_name}': {
                             '$each': [
                                 {
-                                    "date": d,
+                                    "date": dt.strptime(d, "%Y-%m-%d %H:%M:%S"),
                                     "starts": starts_at,
                                     "duration": duration,
                                     "internal_id": internal_id_list[i] if internal_id_list and len(internal_id_list) > i else None
@@ -356,6 +356,26 @@ class Database(commands.Cog):
             print(e)
 
 
+    async def get_all_with_assigned(self):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.find(
+                filter={
+                    'assigned_channel': {
+                        '$ne': 'n/a'
+                    }
+                },
+                projection={
+                    "_id": 1
+                }
+            )
+
+            return [doc.get('_id') for doc in result]
+        except Exception as e:
+            print(e)
+
+
     async def delete_set(self, g_id, user_id, event_name, list_of_indexes):
         try:
             db = self.client.get_database("scheduling")
@@ -443,8 +463,57 @@ class Database(commands.Cog):
 
 
     async def clean_old(self):
-        print("CLEANING UP!!!")
+        try:
+            db = self.client.get_database("scheduling")
 
+            now = dt.now(timezone.utc)
+
+            db.guilds.aggregate([
+                {
+                    "$addFields": {
+                        "event_days_array": {"$objectToArray": "$event_days"}
+                    }
+                },
+                {
+                    "$addFields": {
+                        "event_days_array": {
+                            "$map": {
+                                "input": "$event_days_array",
+                                "as": "event",
+                                "in": {
+                                    "k": "$$event.k",
+                                    "v": {
+                                        "$filter": {
+                                            "input": "$$event.v",
+                                            "as": "day",
+                                            "cond": {"$gte": ["$$day.date", now]}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "$addFields": {
+                        "event_days": {"$arrayToObject": "$event_days_array"}
+                    }
+                },
+                {
+                    "$unset": "event_days_array"
+                },
+                {
+                    "$merge": {
+                        "into": "guilds",
+                        "on": "_id",
+                        "whenMatched": "replace"
+                    }
+                }
+            ])
+
+
+        except Exception as e:
+            print(e)
 
     async def update_to_inactive(self, g_id, user_id, event_name, val:bool):
         try:

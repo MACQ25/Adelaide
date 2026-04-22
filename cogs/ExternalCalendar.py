@@ -1,5 +1,5 @@
 import calendar
-from datetime import datetime as dt
+from datetime import datetime as dt, date
 import discord
 from discord.ext import commands
 from discord import app_commands, ui, Button
@@ -15,9 +15,8 @@ class ExternalCalendar(commands.Cog):
         self.db = bot.get_cog("Database")
 
 
-    @commands.Cog.listener()
-    async def on_update_calendar(self, interaction: discord.Interaction):
-        data =  await self.db.get_events(interaction.guild_id)
+    async def update_calendar(self, guild_id: int, interaction:discord.Interaction = None):
+        data =  await self.db.get_events(guild_id)
 
         current_day = dt.today()
         event_labels = [list() for _ in range(calendar.monthrange(current_day.year, current_day.month)[1])]
@@ -28,29 +27,31 @@ class ExternalCalendar(commands.Cog):
             if pair[0] not in colors:
                 continue
             for ev in pair[1]:
-                event_labels[dt.fromisoformat(ev.get('date').split()[0]).day - 1].append([pair[0], colors[pair[0]]])
+                #dt.fromisoformat(ev.get('date').split()[0]).day - 1
+                l_date: date = ev.get('date')
+                event_labels[l_date.day - 1].append([pair[0], colors[pair[0]]])
 
-        img = await draw(guild_id=interaction.guild_id, events=event_labels)
+        img = await draw(guild_id=guild_id, events=event_labels)
 
         assigned_id = data.get("assigned_channel")
         if assigned_id != 'n/a':
-            for ch in interaction.guild.text_channels:
+            for ch in self.bot.get_guild(guild_id).text_channels:
                 try:
                     ch_pins = await ch.pins()
                     for msg in ch_pins:
-                        if msg.author.id == interaction.client.user.id:
+                        if msg.author.id == self.bot.user.id:
                             await msg.unpin()
                             await msg.delete()
 
                     async for msg in ch.history(limit=100):
-                        if msg.type == discord.MessageType.pins_add and msg.author.id == interaction.client.user.id:
+                        if msg.type == discord.MessageType.pins_add and msg.author.id == self.bot.user.id:
                             await msg.delete()
                 except discord.Forbidden:
                     continue  # skip channels the bot can't access
                 except discord.NotFound:
                     continue
 
-            channel = await interaction.client.fetch_channel(assigned_id.get('channel_id'))
+            channel = await self.bot.fetch_channel(assigned_id.get('channel_id'))
 
             file = discord.File(img, filename="Calendar.jpeg")
             embed = discord.Embed(title=f"📅 {dt.now().strftime("%B")} Calendar", color=discord.Color.blue())
@@ -61,9 +62,11 @@ class ExternalCalendar(commands.Cog):
             msg = await channel.send(embed=embed, file=file)
             await msg.pin()
 
-            await interaction.followup.send("updated on assigned channel!", ephemeral=True)
+            if interaction is not None:
+                await interaction.followup.send("updated on assigned channel!", ephemeral=True)
         else:
-            await interaction.followup.send(file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
+            if interaction is not None:
+                await interaction.followup.send(file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
 
 
     @commands.Cog.listener()
@@ -85,7 +88,7 @@ class ExternalCalendar(commands.Cog):
         except Exception as e:
             print("exception found on listener")
         finally:
-            interaction.client.dispatch("update_calendar", interaction)
+            await self.update_calendar(interaction.guild.id, interaction)
             if event.role is not None:
                 interaction.client.dispatch(
                     "notify_invitations",
@@ -101,7 +104,7 @@ class ExternalCalendar(commands.Cog):
         success: bool
         success = await self.db.quick_create(interaction.guild_id, interaction.user.id, event_name, dates, starts, duration, int_events_id)
         if success:
-            interaction.client.dispatch("update_calendar", interaction)
+            await self.update_calendar(interaction.guild.id, interaction)
         else:
             await interaction.followup.send("Something went wrong while processing this request")
 
@@ -122,7 +125,7 @@ class ExternalCalendar(commands.Cog):
         if success:
             if internals and len(internals) > 0:
                 interaction.client.dispatch("remove_scheduled", interaction, internals)
-            interaction.client.dispatch("update_calendar", interaction)
+            await self.update_calendar(interaction.guild.id, interaction)
         else:
             await interaction.followup.send("Something went wrong while processing this request")
 
@@ -131,7 +134,7 @@ class ExternalCalendar(commands.Cog):
     async def on_ext_event_hiatus(self, interaction: discord.Interaction, event_name:str, active:bool):
         success = await self.db.update_to_inactive(interaction.guild_id, interaction.user.id, event_name, active)
         if success:
-            interaction.client.dispatch("update_calendar", interaction)
+            await self.update_calendar(interaction.guild.id, interaction)
 
             if not active:
                 internals = await self.db.get_all_internal_id(interaction.guild_id, interaction.user.id, event_name)
@@ -173,7 +176,7 @@ class ExternalCalendar(commands.Cog):
 
         ext_success = await self.db.delete_full(interaction.guild_id, interaction.user.id, event_name)
         if ext_success:
-            interaction.client.dispatch("update_calendar", interaction)
+            await self.update_calendar(interaction.guild.id, interaction)
         else:
             await interaction.followup.send("Something went wrong while processing this request")
 
@@ -181,7 +184,7 @@ class ExternalCalendar(commands.Cog):
     @app_commands.command(name="force-refresh", description="Forces a refresh of the pinned calendar")
     async def fr(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        interaction.client.dispatch("update_calendar", interaction)
+        await self.update_calendar(interaction.guild.id, interaction)
 
 
 async def setup(bot: commands.Bot):
