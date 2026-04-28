@@ -1,11 +1,10 @@
+import os
+
 from PIL import Image, ImageDraw, ImageFont, ImageColor
-import datetime
 from datetime import date as dt
 import calendar
 import asyncio
 from functools import partial
-import numpy as np
-from PIL.ImageEnhance import Color
 
 w, h = 1420, 1200
 
@@ -89,8 +88,11 @@ https://stackoverflow.com/questions/70420891/how-do-i-create-a-calendar-using-pi
 """
 
 async def draw(guild_id: int, events: list):
-    weekdays = ImageFont.truetype("arialbd.ttf", 32)
-    font = ImageFont.truetype("arialbd.ttf", 16)
+
+    font_path = os.getenv("FONT_PATH", "arialbd.ttf")
+
+    weekdays = ImageFont.truetype(font_path, 32)
+    font = ImageFont.truetype(font_path, 16)
 
     img = Image.new("RGBA",(w,h), (255,255,255))
     draw = ImageDraw.Draw(img)
