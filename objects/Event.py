@@ -26,7 +26,7 @@ def format_dates(dates:str, start_time:int=19):
 
 class Event:
 
-    def __init__(self, owner:int, name:str, description:str, mode:str, dates:str, starts:int, duration:int, colour:str = None):
+    def __init__(self, owner:int, name:str, description:str, mode:str, dates:str, starts:int, duration:int, colour:List[str] = None):
         # Unique information saved on its own folder, relational style
         self.owner = owner
 
@@ -36,8 +36,10 @@ class Event:
         # Saved on the above folder, divided because these are important to be reflected on the calendar
         self.color = colour
         self.custom_modified = False
-        self.custom_set = ''
-        self.frequency = mode
+        self.custom_set_1 = None
+        self.custom_set_2 = None
+        self.custom_gradient = None
+        self.frequency = int(mode)
 
         # Saved on a general ID tracked list of dates, based on server
         self.dates = format_dates(dates, start_time=starts)

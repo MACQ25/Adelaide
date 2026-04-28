@@ -1,6 +1,7 @@
 import datetime as dt
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 from typing import Callable, Optional
 from objects.Event import Event
@@ -20,7 +21,7 @@ async def role_creation(interaction: discord.Interaction, event: Event):
     else:
         n_role = await guild.create_role(
             name=event.summary,
-            color=discord.Color.from_str(event.custom_set if event.custom_modified else event.color),
+            color=discord.Color.from_str(event.custom_set_1 if event.custom_modified else event.color[0]),
             mentionable=True,
             hoist=False,
             reason=f"Created for event: {event.summary} by {interaction.user.name}"
@@ -34,7 +35,7 @@ async def role_deletion(interaction: discord.Interaction, role_id: int):
     await guild.get_role(role_id).delete(reason="Event type is being deleted")
 
 
-async def scheduled_events(ev_name: str, ev_description: str, dates: list, duration:int|list, guild: discord.Guild, channel: discord.VoiceChannel, user: discord.User):
+async def scheduled_events(ev_name: str, ev_description: str, dates: list, duration:int|list, guild: discord.Guild, channel: discord.VoiceChannel):
     id_list = []
 
     for ind, date in enumerate(dates):
@@ -58,11 +59,15 @@ async def scheduled_events(ev_name: str, ev_description: str, dates: list, durat
     return id_list
 
 
-
 class InternalEvents(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.get_cog("Database")
+
+
+    async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        owned = await self.db.get_by_user(interaction.guild_id, interaction.user.id)
+        return [ app_commands.Choice(name=item, value=item) for item in owned if item.__contains__(current) or current.__len__() == 0]
 
 
     @commands.Cog.listener()
@@ -109,13 +114,14 @@ class InternalEvents(commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_quick_creation(self, interaction: discord.Interaction, event_name:str, dates:list, starts:int, duration:int):
-        event_data = await self.db.get_internal_data(interaction.guild_id, interaction.user.id, event_name)
+    async def on_quick_creation(self, guild:discord.Guild, u_id:int, event_name:str, dates:list, starts:int, duration:int, event_data=None, interaction:discord.Interaction|None=None):
+        if event_data is None:
+            event_data = await self.db.get_internal_data(guild.id, u_id, event_name)
 
         if event_data and event_data.get("vc_id"):
             c_channel = interaction.guild.get_channel(event_data.get("vc_id"))
-            internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, interaction.guild, c_channel, interaction.user)
-            interaction.client.dispatch("ext_event_q_creation", interaction, event_name, dates, starts, duration, internal_id)
+            internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, guild, c_channel)
+            interaction.client.dispatch("ext_event_q_creation", interaction, event_name, dates, starts, duration, internal_id, interaction)
 
 
     @commands.Cog.listener()
@@ -137,6 +143,12 @@ class InternalEvents(commands.Cog):
         guild = interaction.guild
         for se in scheduled_list:
             await guild.get_scheduled_event(se).delete()
+
+
+"""    @app_commands.command(name="Attach Image", description="Add an image to an event you own")
+    @app_commands.autocomplete(name=owned_events_autocomplete)
+    async def add_image(self):
+        pass"""
 
 
 async def setup(bot: commands.Bot):

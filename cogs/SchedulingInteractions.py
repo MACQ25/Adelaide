@@ -3,6 +3,7 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 from discord import app_commands
+from cogs.ExternalCalendar import check_permissions_assigned, lacks_perms_msg
 from objects.Event import Event, format_dates
 from objects.EventColorEnum import EventColor
 from objects.EventSettingsUI import EventSettings
@@ -12,6 +13,7 @@ class SchedulingInteractions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.get_cog("Database")
+
 
     async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         owned = await self.db.get_by_user(interaction.guild_id, interaction.user.id)
@@ -77,14 +79,21 @@ class SchedulingInteractions(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         result_msg = ""
         send_update_out = False
+
+        perms = await check_permissions_assigned(self.bot, channel)
         try:
-            await self.db.save_assigned(interaction.guild.id, channel)
-            result_msg = "Channel updated to {}".format(channel)
-            send_update_out = True
+            if all(perms.values()):
+                await self.db.save_assigned(interaction.guild.id, channel)
+                result_msg = "Channel updated to {}".format(channel)
+                send_update_out = True
         except Exception as e:
             result_msg = "Could not update to target channel"
         finally:
+            if not all(perms.values()):
+                result_msg = lacks_perms_msg(self.bot, channel, perms)
+
             await interaction.followup.send(result_msg, ephemeral=True)
+
             if send_update_out:
                 await self.bot.get_cog("ExternalCalendar").update_calendar(interaction.guild.id, interaction)
 
@@ -116,7 +125,7 @@ class SchedulingInteractions(commands.Cog):
                     owner=interaction.user.id,
                     name=name,
                     description=desc,
-                    colour=color,
+                    colour=[color.value] if color is not None else [None],
                     mode=str(mode),
                     dates=dates,
                     starts=starts,
@@ -148,9 +157,10 @@ class SchedulingInteractions(commands.Cog):
         dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed",
         color="Color with which you want the event to be associated (Calendar specific)",
         starts="Start time of event, in 24 hour format (Defaults to 7 p.m)",
-        duration="Duration of event in hours (Defaults to 4)"
+        duration="Duration of event in hours (Defaults to 4)",
+        create_channel="For Scheduled Events set up, use existing or create new section?"
     )
-    async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, color: app_commands.Choice[str]=None, mode:int=1, desc:str=""):
+    async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False):
         await interaction.response.defer(ephemeral=True)
         if not await self.db.check_if_exists(interaction.id, name):
             try:
@@ -158,13 +168,13 @@ class SchedulingInteractions(commands.Cog):
                     owner=interaction.user.id,
                     name=name,
                     description=desc,
-                    colour=color,
+                    colour=[color.value] if color is not None else [None],
                     mode=str(mode),
                     dates=dates,
                     starts=starts,
                     duration=duration
                 )
-                view = EventSettings(interaction.user, event, True)
+                view = EventSettings(interaction.user, event, True, create_channel)
                 await interaction.followup.send(view=view, ephemeral=True)
             except TypeError:
                 await interaction.followup.send(content="User didnt enter a number in one of the dates", ephemeral=True)
@@ -179,7 +189,7 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.autocomplete(name=owned_events_autocomplete)
     async def quick_create(self, interaction: discord.Interaction, name:str, dates:str):
         await interaction.response.defer(ephemeral=True)
-        interaction.client.dispatch("ext_event_q_creation", interaction, name, format_dates(dates), 19, 4)
+        interaction.client.dispatch("ext_event_q_creation", interaction.guild, interaction.user.id, name, format_dates(dates), 19, 4, int_events_id=None, interaction=interaction)
 
 
     @app_commands.command(name="fcq", description="Full Scheduling of an event the user owns, skips the modal")
@@ -187,7 +197,7 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.autocomplete(name=owned_events_autocomplete)
     async def quick_full_create(self, interaction: discord.Interaction, name:str, dates:str, start_time:int=19, duration:int=4):
         await interaction.response.defer(ephemeral=True)
-        interaction.client.dispatch("quick_creation", interaction, name, format_dates(dates, start_time), start_time, duration)
+        interaction.client.dispatch("quick_creation", interaction.guild, interaction.user.id, name, format_dates(dates, start_time), start_time, duration, event_data=None, interaction=interaction)
 
 
     @app_commands.command(name="cancel", description="Drops one or more scheduled dates for one specific event type")

@@ -1,6 +1,5 @@
 import datetime as dt
 from typing import Callable, Optional
-
 import discord
 from aiohttp.log import client_logger
 from discord.ext import commands
@@ -42,6 +41,8 @@ async def on_guild_join(guild):
 
 @bot.event
 async def on_error(event, *args, **kwargs):
+    import traceback
+    traceback.print_exc()
     print(f"Error in {event}:", args, **kwargs)
     raise
 
@@ -53,6 +54,42 @@ async def sync(ctx: Context):
     bot.tree.copy_global_to(guild=discord.Object(id=ctx.guild.id))
     await bot.tree.sync(guild=discord.Object(id=ctx.guild.id))
     await msg.edit(content="Synced!")
+
+
+async def renew_frequents():
+    db = bot.get_cog("Database")
+    to_update = await db.get_to_renew() if db is not None else []
+
+    for guild in to_update:
+        for event in guild.get("event_data"):
+
+            date_sample = event.get("date_samp")
+            starting_from = dt.datetime.fromisoformat(date_sample.get("date"))
+
+            if event.get("frequency") == 2:
+                new_batch = list()
+                for x in range(5):
+                    n_date = starting_from + dt.timedelta(weeks=x + 1)
+                    if n_date.month == starting_from.month + 1:
+                        new_batch.append(n_date)
+                dates = new_batch
+            else:
+                dates = [starting_from + dt.timedelta(days=28)]
+
+            if "channel" in event:
+
+                ev_data = {
+                    "event_owns_it": event.get("channel").get("event_owns_it"),
+                    "section_id": event.get("channel").get("section_id"),
+                    "text_id": event.get("channel").get("text_id"),
+                    "vc_id": event.get("channel").get("vc_id"),
+                    "desc": event.get("desc"),
+                    "role_id":  event.get("role_id")
+                }
+
+                bot.dispatch("quick_creation", guild.get("_id"), 0, event.get("name"), dates, date_sample.get("starts"), date_sample.get("duration"), ev_data)
+            else:
+                bot.dispatch("ext_event_q_creation", guild.get("_id"), 0, event.get("name"), dates, date_sample.get("starts"), date_sample.get("duration"))
 
 
 async def issue_updates():
@@ -73,6 +110,7 @@ async def perform_cleanup(cleanup_func: Optional[Callable] = None):
         print(f"{time_to_next} seconds til next execution")
         await asyncio.sleep(time_to_next)
         if cleanup_func is not None:
+            await renew_frequents()
             await cleanup_func()
             asyncio.create_task(issue_updates())
 

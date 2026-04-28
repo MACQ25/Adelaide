@@ -72,24 +72,31 @@ class Database(commands.Cog):
         try:
             db = self.client.get_database("scheduling")
 
+            data = {
+                "name": event.summary,
+                "desc": event.description,
+                "color": event.color,
+                "frequency": int(event.frequency),
+                "active": True,
+            }
+
+            if event.channel or event.check_adv_present():
+                channel_data = {
+                    "section_id": event.section if event.section else None,
+                    "text_id": event.text_channel if event.text_channel else None,
+                    "vc_id": event.channel.id if event.channel else event.voice_channel,
+                    "event_owns_it": event.created_for_event
+                }
+                data.update({"channel" : channel_data})
+
+            if event.role is not None:
+                data.update({"role_id": event.role})
+
             db.guilds.update_one(
                 filter={'_id': g_id, 'event_data.name': {'$ne': event.summary}},
                 update={
                     '$push': {
-                        'event_data': {
-                            "name": event.summary,
-                            "desc": event.description,
-                            "channel": {
-                                "section_id": event.section if event.section else None,
-                                "text_id": event.text_channel if event.text_channel else None,
-                                "vc_id": event.channel.id if event.channel else event.voice_channel,
-                                "event_owns_it": event.created_for_event
-                            } if event.channel or event.check_adv_present() else {},
-                            "color": event.color,
-                            "frequency": event.frequency,
-                            "active": True,
-                            "role_id": event.role
-                        }
+                        'event_data': data
                     }
                 }
             )
@@ -135,15 +142,18 @@ class Database(commands.Cog):
             raise Exception("Failed to create the event") from e
 
 
-    async def quick_create(self, g_id, user_id, event_name, dates, starts_at, duration, internal_id_list:list=None):
+    async def quick_create(self, g_id, user_id, event_name, dates, starts_at, duration, internal_id_list:list=None, admin=False):
         try:
             db = self.client.get_database("scheduling")
 
+            filter_params = {
+                "_id": g_id
+            }
+            if not admin:
+                filter_params.update({f"event_owners.{user_id}": event_name})
+
             result = db.guilds.update_one(
-                {
-                    "_id": g_id,
-                    f"event_owners.{user_id}": event_name,
-                },
+                filter = filter_params,
                 update={
                     '$push': {
                         f'event_days.{event_name}': {
@@ -376,6 +386,88 @@ class Database(commands.Cog):
             print(e)
 
 
+    async def get_to_renew(self):
+        try:
+            db = self.client.get_database("scheduling")
+
+            results = db.guilds.aggregate([
+                {
+                    "$match": {
+                        "event_data": {
+                            "$elemMatch": {
+                                "frequency": {
+                                    "$gte": 2
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "$project": {
+                        "event_data": {
+                            "$map": {
+                                "input": {
+                                    "$filter": {
+                                        "input": "$event_data",
+                                        "as": "ev",
+                                        "cond": {
+                                            "$and": [
+                                                {
+                                                    "$gte": [
+                                                        "$$ev.frequency",
+                                                        2
+                                                    ]
+                                                },
+                                                {
+                                                    "$ne": [
+                                                        {
+                                                            "$size": {
+                                                                "$ifNull": [
+                                                                    {
+                                                                        "$getField": {
+                                                                            "field": "$$ev.name",
+                                                                            "input": "$event_days"
+                                                                        }
+                                                                    },
+                                                                    []
+                                                                ]
+                                                            }
+                                                        },
+                                                        0
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    }
+                                },
+                                "as": "event",
+                                "in": {
+                                    "name": "$$event.name",
+                                    "frequency": "$$event.frequency",
+                                    "channel": "$$event.channel",
+                                    "desc": "$$event.desc",
+                                    "date_samp": {
+                                        "$arrayElemAt": [
+                                            {
+                                                "$getField": {
+                                                    "field": "$$event.name",
+                                                    "input": "$event_days"
+                                                }
+                                            },
+                                            0
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ])
+            return results
+        except Exception as e:
+            print(e)
+
+
     async def delete_set(self, g_id, user_id, event_name, list_of_indexes):
         try:
             db = self.client.get_database("scheduling")
@@ -496,7 +588,17 @@ class Database(commands.Cog):
                 },
                 {
                     "$addFields": {
-                        "event_days": {"$arrayToObject": "$event_days_array"}
+                        "event_days": {
+                            "$cond": {
+                                "if": {
+                                    "$eq": [{ "$size": "$event_days_array" }, 0]
+                                },
+                                "then": "$$REMOVE",
+                                "else": {
+                                    "$arrayToObject": "$event_days_array"
+                                }
+                              }
+                        }
                     }
                 },
                 {
@@ -511,9 +613,9 @@ class Database(commands.Cog):
                 }
             ])
 
-
         except Exception as e:
             print(e)
+
 
     async def update_to_inactive(self, g_id, user_id, event_name, val:bool):
         try:

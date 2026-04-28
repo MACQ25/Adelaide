@@ -38,3 +38,6 @@ class EventColor(enum.Enum):
 
     def as_option(self) -> discord.SelectOption:
         return discord.SelectOption(label=self.name.capitalize(), emoji=self.emoji, value=str(self.value))
+
+    def as_text(self):
+        return str(self.value)

@@ -1,5 +1,6 @@
 import calendar
-from datetime import datetime as dt, date
+from datetime import datetime as dt
+from datetime import date, timedelta
 import discord
 from discord.ext import commands
 from discord import app_commands, ui, Button
@@ -7,6 +8,26 @@ from discord.ui import View
 from objects.Event import Event
 from CalendarImageGen import draw
 from cogs.InternalEvents import role_deletion, scheduled_events
+
+
+async def check_permissions_assigned(bot, channel: discord.TextChannel) -> dict:
+    p = channel.permissions_for(channel.guild.get_member(bot.user.id))
+
+    perms_checked = {
+        "View Channel": p.view_channel,
+        "Read Message History": p.read_message_history,
+        "Send Messages": p.send_messages,
+        "Pin Messages": p.pin_messages,
+        "Manage Messages": p.manage_messages,
+        "Attach Files": p.attach_files
+    }
+
+    return perms_checked
+
+
+def lacks_perms_msg(bot, channel, permission_dict):
+    return f"Could not set up channel, missing permissions for <@{bot.user.id}> on <#{channel.id}>\n\n**MISSING**:\n" + "\n".join([k for k in permission_dict.keys() if not permission_dict[k]])
+
 
 
 class ExternalCalendar(commands.Cog):
@@ -35,35 +56,42 @@ class ExternalCalendar(commands.Cog):
 
         assigned_id = data.get("assigned_channel")
         if assigned_id != 'n/a':
-            for ch in self.bot.get_guild(guild_id).text_channels:
-                try:
-                    ch_pins = await ch.pins()
-                    for msg in ch_pins:
-                        if msg.author.id == self.bot.user.id:
-                            await msg.unpin()
-                            await msg.delete()
 
-                    async for msg in ch.history(limit=100):
-                        if msg.type == discord.MessageType.pins_add and msg.author.id == self.bot.user.id:
-                            await msg.delete()
-                except discord.Forbidden:
-                    continue  # skip channels the bot can't access
-                except discord.NotFound:
-                    continue
+            a_channel = await self.bot.fetch_channel(assigned_id.get('channel_id'))
+            perms = await check_permissions_assigned(self.bot, a_channel)
 
-            channel = await self.bot.fetch_channel(assigned_id.get('channel_id'))
+            if all(perms.values()):
+                for ch in self.bot.get_guild(guild_id).text_channels:
+                    try:
+                        ch_pins = await ch.pins()
+                        for msg in ch_pins:
+                            if msg.author.id == self.bot.user.id:
+                                await msg.unpin()
+                                await msg.delete()
 
-            file = discord.File(img, filename="Calendar.jpeg")
-            embed = discord.Embed(title=f"📅 {dt.now().strftime("%B")} Calendar", color=discord.Color.blue())
-            embed.set_image(url="attachment://Calendar.jpeg")
-            embed.description = "Scheduled Events: " + ", ".join(f"<@&{r.get('role_id')}>" for r in data.get("event_data", []) if 'role_id' in r)
-            embed.set_footer(text=f"Last updated: {dt.today().strftime('%Y-%m-%d %H:%M')}")
+                        async for msg in ch.history(limit=100):
+                            if msg.type == discord.MessageType.pins_add and msg.author.id == self.bot.user.id:
+                                await msg.delete()
+                    except discord.Forbidden:
+                        continue  # skip channels the bot can't access
+                    except discord.NotFound:
+                        continue
 
-            msg = await channel.send(embed=embed, file=file)
-            await msg.pin()
 
-            if interaction is not None:
-                await interaction.followup.send("updated on assigned channel!", ephemeral=True)
+                file = discord.File(img, filename="Calendar.jpeg")
+                embed = discord.Embed(title=f"📅 {dt.now().strftime("%B")} Calendar", color=discord.Color.blue())
+                embed.set_image(url="attachment://Calendar.jpeg")
+                embed.description = "Scheduled Events: " + ", ".join(f"<@&{r.get('role_id')}>" for r in data.get("event_data", []) if 'role_id' in r)
+                embed.set_footer(text=f"Last updated: {dt.today().strftime('%Y-%m-%d %H:%M')}")
+
+                msg = await a_channel.send(embed=embed, file=file)
+                await msg.pin()
+
+                if interaction is not None:
+                    await interaction.followup.send("updated on assigned channel!", ephemeral=True)
+            else:
+                if interaction is not None:
+                    await interaction.followup.send(content=lacks_perms_msg(self.bot, a_channel, perms), file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
         else:
             if interaction is not None:
                 await interaction.followup.send(file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
@@ -78,11 +106,14 @@ class ExternalCalendar(commands.Cog):
                 event.dates = [event.dates[0]]
             elif int(event.frequency) == 2:
                 starting_from = dt.fromisoformat(event.dates[0])
-                c_month = calendar.monthrange(starting_from.year, starting_from.month)
-                new_batch = list()
+
                 # Adding a +1 hoping no bugs to arise when it comes to February
-                for x in range(starting_from.day, c_month[1] + 1, 7):
-                    new_batch.append(starting_from.replace(day=x).__str__())
+                new_batch = list()
+                for x in range(5):
+                    n_date = starting_from + timedelta(weeks=x + 1)
+                    if n_date.month == starting_from.month:
+                        new_batch.append(n_date)
+
                 event.dates = new_batch
             await self.db.save_event(interaction.guild_id, event)
         except Exception as e:
@@ -100,11 +131,11 @@ class ExternalCalendar(commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_ext_event_q_creation(self, interaction: discord.Interaction, event_name:str, dates:list, starts:int, duration:int, int_events_id:list=None):
+    async def on_ext_event_q_creation(self, guild:discord.Guild, u_id:int, event_name:str, dates:list, starts:int, duration:int, int_events_id:list|None=None, interaction:discord.Interaction|None=None, admin:bool=False):
         success: bool
-        success = await self.db.quick_create(interaction.guild_id, interaction.user.id, event_name, dates, starts, duration, int_events_id)
+        success = await self.db.quick_create(guild.id, u_id, event_name, dates, starts, duration, int_events_id, admin)
         if success:
-            await self.update_calendar(interaction.guild.id, interaction)
+            await self.update_calendar(guild.id, interaction)
         else:
             await interaction.followup.send("Something went wrong while processing this request")
 

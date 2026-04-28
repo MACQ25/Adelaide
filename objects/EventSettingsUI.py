@@ -56,20 +56,46 @@ class SetTextButton(ui.Button['EventSettings']):
 
 
 class CustomizeModal(ui.Modal, title="Set Custom Color"):
-    colorInput = ui.TextInput(label="Enter a color in hex format", style=discord.TextStyle.paragraph, required=True)
 
     def __init__(self, view: 'EventSettings', button: SetCustomButton):
         super().__init__()
         self.view = view
         self.values = view.data
         self.button = button
-        self.colorInput.default = view.data.color if self.values.custom_modified else view.data.custom_set
+
+        self.textHelper = ui.TextDisplay(content="Color values formated in Hex format, for example #ff0000 for red, you may use an external color picker such as [this](https://www.figma.com/es-la/circulo-cromatico/)")
+
+        self.colorInput1 = ui.TextInput(
+            label="Enter the main color",
+            style=discord.TextStyle.short,
+            required=True,
+            default=  view.data.custom_set_1 or view.data.color[0] or EventColor.custom.as_text(),
+        )
+        self.colorInput2 = ui.TextInput(
+            label="secondary color for gradient, if any",
+            style=discord.TextStyle.short,
+            placeholder= EventColor.custom.as_text()
+        )
+        self.colorInput3 = ui.TextInput(
+            label="Gradient degree (1.0 - 0.01, ideal 0.35)",
+            style=discord.TextStyle.short,
+            placeholder="1.0"
+        )
+
+        self.add_item(self.textHelper)
+        self.add_item(self.colorInput1)
+        self.add_item(self.colorInput2)
+        self.add_item(self.colorInput3)
+
+
 
     async def on_submit(self, interaction: discord.Interaction[Bot]) -> None:
         try:
             self.values.custom_modified = True
-            self.values.custom_set = str(self.colorInput.value)
-            self.values.color = str(self.colorInput.value)
+            self.values.custom_set_1 = str(self.colorInput1.value)
+            self.values.custom_set_2 = str(self.colorInput2.value) or str(self.colorInput1.value)
+            self.values.custom_gradient = float(self.colorInput3.value) if (self.colorInput3.value.isnumeric() and float(self.colorInput3.value) <= 1.0) else 0.2
+            self.values.color = [str(self.colorInput1.value)]
             self.view.color_select.sync_custom_state()
 
             self.view.finish_button.disabled = not self.view.is_valid
@@ -97,14 +123,15 @@ class ColorSetting(ui.ActionRow['EventSettings']):
 
     def update_options(self):
         for option in self.select_color.options:
-            option.default = option.value == self.values.color
+            option.default = option.value == self.values.color[0]
+
 
     def sync_custom_state(self):
         """Called after the modal submits — updates the Custom option label to show the set color."""
         for option in self.select_color.options:
             if option.label.__contains__("Custom"):
-                option.value = self.values.custom_set
-                option.label = f"Custom ({self.values.custom_set})"
+                option.value = self.values.custom_set_1
+                option.label = f"Custom ({self.values.custom_set_1})"
                 break
         self.update_options()
 
@@ -112,11 +139,10 @@ class ColorSetting(ui.ActionRow['EventSettings']):
     @ui.select(placeholder='Select a color', options=[color.as_option() for color in EventColor])
     async def select_color(self, interaction: discord.Interaction[Bot], select: discord.ui.Select) -> None:
         if select.values[0].__contains__("Custom"):
-            self.values.custom_modified = False
-            self.values.color = self.values.custom_set  # keep the last entered hex
+            self.values.color = [self.values.custom_set_1]  # keep the last entered hex
         else:
             self.values.custom_modified = False
-            self.values.color = select.values[0]
+            self.values.color = [select.values[0]]
         self.update_options()
 
         self.view.finish_button.disabled = not self.view.is_valid
@@ -131,7 +157,7 @@ class FrequencySelect(ui.ActionRow['EventSettings']):
 
     def update_frequency(self):
         for option in self.select_mode.options:
-            option.default = option.value == self.values.frequency
+            option.default = option.value == str(self.values.frequency)
 
     @ui.select(
         placeholder='Select the frequency',
@@ -142,7 +168,7 @@ class FrequencySelect(ui.ActionRow['EventSettings']):
         ]
     )
     async def select_mode(self, interaction: discord.Interaction[Bot], select: discord.ui.Select) -> None:
-        self.values.frequency = select.values[0]
+        self.values.frequency = int(select.values[0])
         self.update_frequency()
 
         await interaction.response.edit_message(view=self.view)
@@ -156,10 +182,7 @@ class DatesModal(ui.Modal, title="Modal Title"):
         self.view = view
         self.values = view.data
         self.button = button
-        date_string = ""
-        for date in self.values.dates:
-            date_string += date + ",\n"
-        self.datesInput.default = date_string
+        self.datesInput.default = ",\n".join(self.values.dates)
 
     async def on_submit(self, interaction: discord.Interaction[Bot]) -> None:
         try:
@@ -292,23 +315,36 @@ class MembersSetting(ui.ActionRow['EventSettings']):
         await interaction.response.edit_message(view=self.view)
 
 
-class AdvCreationModal(ui.Modal, title="Create a Specific Zone for "):
-    sectionInput = ui.TextInput(label="Name of the new section", default="", style=discord.TextStyle.paragraph, required=True)
-    channelInput = ui.TextInput(label="Name of the new text channel", default="", style=discord.TextStyle.paragraph, required=True)
-    vcInput = ui.TextInput(label="Name of the new voice channel", default="", style=discord.TextStyle.paragraph, required=True)
-
+class AdvCreationModal(ui.Modal, title="New Zone for "):
     def __init__(self, view: 'EventSettings'):
         super().__init__()
         self.view = view
         self.values = view.data
+        self.title = f'{self.title}{self.values.summary if len(self.values.summary) < 33 else f"{self.values.summary[:29]}..."}' if self.values.summary is not None else "The event is still unnamed tho..."
 
-        if self.values.summary is not None:
-            self.title = f'{self.title} {self.values.summary}'
-            self.sectionInput.default = f'{self.values.summary}'
-            self.channelInput.default = f'{self.values.summary} general'
-            self.vcInput.default = f'{self.values.summary} vc'
-        else:
-            self.title = f'{self.title} your new Event'
+        self.sectionInput = ui.TextInput(
+            label="Name of the new section",
+            default=f'{self.values.summary}',
+            style=discord.TextStyle.paragraph,
+            required=True
+        )
+
+        self.channelInput = ui.TextInput(
+            label="Name of the new text channel",
+            default=f'{self.values.summary} general',
+            style=discord.TextStyle.paragraph,
+            required=True
+        )
+        self.vcInput = ui.TextInput(
+            label="Name of the new voice channel",
+            default=f'{self.values.summary} vc',
+            style=discord.TextStyle.paragraph,
+            required=True
+        )
+
+        self.add_item(self.sectionInput)
+        self.add_item(self.channelInput)
+        self.add_item(self.vcInput)
 
 
     async def on_submit(self, interaction: discord.Interaction[Bot]) -> None:
@@ -353,13 +389,13 @@ class EventSettings(ui.LayoutView):
 
     row = ui.ActionRow()
 
-    def __init__(self, owner, data: Event, full_featured=False):
+    def __init__(self, owner, data: Event, full_featured=False, cc=False):
         super().__init__()
 
         self.data = data
         self.interaction_owner = owner
-        self.channel_flag = False
         self.full_featured = full_featured
+        self.channel_flag = cc
 
         self.event_name_btn = SetTextButton(self.data, "summary", "Set Title", "Set a new title", self.data.summary)
         self.event_desc_btn = SetTextButton(self.data, "description", "Desc", "Write a description for the event", self.data.description)
@@ -391,14 +427,15 @@ class EventSettings(ui.LayoutView):
             )
         )
 
-        container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
+        if self.full_featured:
+            container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
 
-        container.add_item(
-            ui.Section(
-                ui.TextDisplay(f'## Description\n-# Extra details to be saved to UI. \n\nCurrent: { ("\n*"  + self.data.description + "*") if self.data.description else " No description yet"}'),
-                accessory=self.event_desc_btn,
+            container.add_item(
+                ui.Section(
+                    ui.TextDisplay(f'## Description\n-# Extra details to be saved to UI. \n\nCurrent: { ("\n*"  + self.data.description + "*") if self.data.description else " No description yet"}'),
+                    accessory=self.event_desc_btn,
+                )
             )
-        )
 
 
         container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.large))
@@ -469,7 +506,6 @@ class EventSettings(ui.LayoutView):
 
         # Swap the row so it's at the end
         self.remove_item(self.row)
-        self.remove_item(self.row)
         self.add_item(self.row)
         self.finish_button.disabled = not self.is_valid
 
@@ -485,7 +521,7 @@ class EventSettings(ui.LayoutView):
         self.stop()
 
         if self.data.custom_modified:
-            self.data.color = self.data.custom_set
+            self.data.color = [self.data.custom_set_1, self.data.custom_set_2, self.data.custom_gradient]
 
         self.data.owner_check(interaction.user)
 
