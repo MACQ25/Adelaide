@@ -203,5 +203,5 @@ async def draw(guild_id: int, events: list):
 
     file_output = f"output/{str(guild_id)}.png"
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, partial(img.save, file_output, "PNG"))
+    await loop.run_in_executor(None, partial(img.save, file_output, "PNG"), [])
     return file_output
