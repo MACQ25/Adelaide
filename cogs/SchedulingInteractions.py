@@ -7,7 +7,10 @@ from cogs.ExternalCalendar import check_permissions_assigned, lacks_perms_msg
 from objects.Event import Event, format_dates
 from objects.EventColorEnum import EventColor
 from objects.EventSettingsUI import EventSettings
-from datetime import datetime as dt
+
+async def defer(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)  # type: ignore[attr-defined]
+
 
 class SchedulingInteractions(commands.Cog):
     def __init__(self, bot):
@@ -20,11 +23,11 @@ class SchedulingInteractions(commands.Cog):
         return [ app_commands.Choice(name=item, value=item) for item in owned if item.__contains__(current) or current.__len__() == 0]
 
 
-    async def event_dates_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    async def event_dates_autocomplete(self, interaction: discord.Interaction) -> list[app_commands.Choice[str]]:
         evt_name = interaction.namespace.name
         scheduled = await self.db.get_by_class(interaction.guild_id, evt_name)
 
-        scheduled = [ dt.strptime(val.get('date'), "%Y-%m-%d %H:%M:%S").date().strftime("%B %d of %Y")  for val in scheduled ]
+        scheduled = [ val.get('date').strftime("%B %d of %Y") for val in scheduled ]
 
         entered_dates = [d.strip() for d in interaction.namespace.dates.split(",")]
         registered_values = [str(i) for i, n in enumerate(scheduled) if n in entered_dates]
@@ -66,7 +69,7 @@ class SchedulingInteractions(commands.Cog):
 
     @app_commands.command(name="check", description="helper function to check if database is currently available")
     async def check(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         await self.db.ping()
         await interaction.followup.send("Done!", ephemeral=True)
 
@@ -76,7 +79,7 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def assign_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         result_msg = ""
         send_update_out = False
 
@@ -86,7 +89,7 @@ class SchedulingInteractions(commands.Cog):
                 await self.db.save_assigned(interaction.guild.id, channel)
                 result_msg = "Channel updated to {}".format(channel)
                 send_update_out = True
-        except Exception as e:
+        except Exception:
             result_msg = "Could not update to target channel"
         finally:
             if not all(perms.values()):
@@ -118,7 +121,7 @@ class SchedulingInteractions(commands.Cog):
     )
     async def create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, color: app_commands.Choice[str]=None, mode:int=1, desc:str=""):
         """Shows the settings view."""
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         if not await self.db.check_if_exists(interaction.id, name):
             try:
                 event = Event(
@@ -134,9 +137,9 @@ class SchedulingInteractions(commands.Cog):
                 view = EventSettings(interaction.user, event)
                 await interaction.followup.send(view=view, ephemeral=True)
             except TypeError:
-                await interaction.followup.send(content="User didnt enter a number in one of the dates", ephemeral=True)
+                await interaction.followup.send(content="User didn't enter a number in one of the dates", ephemeral=True)
             except ValueError:
-                await interaction.followup.send(content="User didnt enter a valid date amongst the provided ones", ephemeral=True)
+                await interaction.followup.send(content="User didn't enter a valid date amongst the provided ones", ephemeral=True)
         else:
             await interaction.followup.send(content="Event already exists, pick a different name", ephemeral=True)
 
@@ -161,7 +164,7 @@ class SchedulingInteractions(commands.Cog):
         create_channel="For Scheduled Events set up, use existing or create new section?"
     )
     async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         if not await self.db.check_if_exists(interaction.id, name):
             try:
                 event = Event(
@@ -177,9 +180,9 @@ class SchedulingInteractions(commands.Cog):
                 view = EventSettings(interaction.user, event, True, create_channel)
                 await interaction.followup.send(view=view, ephemeral=True)
             except TypeError:
-                await interaction.followup.send(content="User didnt enter a number in one of the dates", ephemeral=True)
+                await interaction.followup.send(content="User didn't enter a number in one of the dates", ephemeral=True)
             except ValueError:
-                await interaction.followup.send(content="User didnt enter a valid date amongst the provided ones", ephemeral=True)
+                await interaction.followup.send(content="User didn't enter a valid date amongst the provided ones", ephemeral=True)
         else:
             await interaction.followup.send(content="Event already exists, pick a different name", ephemeral=True)
 
@@ -188,7 +191,7 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.describe( name="The name of the event", dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed" )
     @app_commands.autocomplete(name=owned_events_autocomplete)
     async def quick_create(self, interaction: discord.Interaction, name:str, dates:str):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         interaction.client.dispatch("ext_event_q_creation", interaction.guild, interaction.user.id, name, format_dates(dates), 19, 4, int_events_id=None, interaction=interaction)
 
 
@@ -196,7 +199,7 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.describe( name="The name of the event", dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed", start_time="Start time of the event to create", duration="Duration of the event, in hours")
     @app_commands.autocomplete(name=owned_events_autocomplete)
     async def quick_full_create(self, interaction: discord.Interaction, name:str, dates:str, start_time:int=19, duration:int=4):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         interaction.client.dispatch("quick_creation", interaction.guild, interaction.user.id, name, format_dates(dates, start_time), start_time, duration, event_data=None, interaction=interaction)
 
 
@@ -208,7 +211,7 @@ class SchedulingInteractions(commands.Cog):
     )
     @app_commands.autocomplete( name=owned_events_autocomplete, dates=event_dates_autocomplete )
     async def delete(self, interaction: discord.Interaction, name:str, dates:str="", all:bool=False):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         interaction.client.dispatch("ext_event_cancellation", interaction, name, dates.split(","), all)
 
 
@@ -216,7 +219,7 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.describe(name="Name of event class, so long cowboy", status="What is its status? (False = Hiatus)")
     @app_commands.autocomplete(name=owned_events_autocomplete)
     async def hiatus(self, interaction: discord.Interaction, name:str, status:bool):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         interaction.client.dispatch("ext_event_hiatus", interaction, name, status)
 
 
@@ -224,7 +227,7 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.describe(name="Name The Victim")
     @app_commands.autocomplete(name=owned_events_autocomplete)
     async def full_delete(self, interaction: discord.Interaction, name:str):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         interaction.client.dispatch("ext_event_full_clean", interaction, name)
 
 

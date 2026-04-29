@@ -1,5 +1,7 @@
 import os
 from datetime import datetime as dt, timezone
+from typing import Any
+
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from discord.ext import commands
@@ -73,7 +75,7 @@ class Database(commands.Cog):
         try:
             db = self.client.get_database("scheduling")
 
-            data = {
+            data: dict[str, Any] = {
                 "name": event.summary,
                 "desc": event.description,
                 "color": event.color,
@@ -267,26 +269,43 @@ class Database(commands.Cog):
         try:
             db = self.client.get_database("scheduling")
 
-            res = db.guilds.find_one(
-                filter={
-                    '_id': g_id,
-                    f'event_days.{event_name}': {'$exists': True}
+            res = db.guilds.aggregate([
+                {
+                    "$match": {
+                        "_id": g_id,
+                        f"event_days.{event_name}": {"$exists": True}
+                    }
                 },
-                projection={
-                    "event_days": {
-                        "$map": {
-                            "input": [{"$arrayElemAt": [f"$event_days.{event_name}", i]} for i in indexes],
-                            "as": "dates",
-                            "in": "$$dates.internal_id"
+                {
+                    "$project": {
+                        "event_days": {
+                            "$filter": {
+                                "input": {
+                                    "$map": {
+                                        "input": {
+                                            "$getField": {
+                                                "field": event_name,
+                                                "input": "$event_days"
+                                            }
+                                        },
+                                        "as": "dates",
+                                        "in": "$$dates.internal_id"
+                                    }
+                                },
+                                "as": "id",
+                                "cond": {"$ne": ["$$id", None]}
+                            }
                         }
                     }
                 }
-            )
+            ])
+
+            res = next(res, None)
 
             return res.get("event_days")
         except Exception as e:
             print(e)
-        raise Exception("Failed to create the event") from e
+            raise Exception("Failed to create the event") from e
 
 
     async def get_internal_data(self, g_id, user_id, event_name):

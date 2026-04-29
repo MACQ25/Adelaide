@@ -3,8 +3,9 @@ from datetime import datetime as dt
 from datetime import date, timedelta
 import discord
 from discord.ext import commands
-from discord import app_commands, ui, Button
-from discord.ui import View
+from discord import app_commands
+
+from cogs.SchedulingInteractions import defer
 from objects.Event import Event
 from CalendarImageGen import draw
 from cogs.InternalEvents import role_deletion, scheduled_events
@@ -152,7 +153,6 @@ class ExternalCalendar(commands.Cog):
             internals = await self.db.get_date_internals(interaction.guild_id, event_name, targets)
             success = await self.db.delete_set(interaction.guild_id, interaction.user.id, event_name, targets)
 
-
         if success:
             if internals and len(internals) > 0:
                 interaction.client.dispatch("remove_scheduled", interaction, internals)
@@ -181,7 +181,7 @@ class ExternalCalendar(commands.Cog):
                     days = [d.get("date") for d in scheduled]
                     duration = [d.get("duration") for d in scheduled]
 
-                    n_id = await scheduled_events(event_name, event_data.get("desc"), days, duration, interaction.guild, c_channel, interaction.user)
+                    n_id = await scheduled_events(event_name, event_data.get("desc"), days, duration, interaction.guild, c_channel)
 
                     if len([r for r in n_id if r > 0]) > 0:
                         for ind, ev in enumerate(scheduled):
@@ -214,7 +214,7 @@ class ExternalCalendar(commands.Cog):
 
     @app_commands.command(name="force-refresh", description="Forces a refresh of the pinned calendar")
     async def fr(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+        await defer(interaction)
         await self.update_calendar(interaction.guild.id, interaction)
 
 
