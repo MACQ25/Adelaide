@@ -41,13 +41,16 @@ async def scheduled_events(ev_name: str, ev_description: str, dates: list, durat
     for ind, date in enumerate(dates):
         date_obj = dt.datetime.strptime(date, "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
 
-        if date_obj > dt.datetime.now().replace(tzinfo=dt.timezone.utc):
+        now = dt.datetime.now().replace(tzinfo=dt.timezone.utc)
+        if date_obj > now:
+
+            end_time = date_obj + dt.timedelta(hours=int(duration[ind] if isinstance(duration, list) else duration))
 
             s_event = await guild.create_scheduled_event(
                 name=ev_name,
                 description=ev_description,
                 start_time=date_obj,
-                end_time=date_obj + dt.timedelta(hours=int(duration[ind] if isinstance(duration, list) else duration)),
+                end_time=end_time,
                 entity_type=discord.EntityType.voice,
                 channel=channel,
                 privacy_level=discord.PrivacyLevel.guild_only,
@@ -118,7 +121,9 @@ class InternalEvents(commands.Cog):
         if event_data is None:
             event_data = await self.db.get_internal_data(guild.id, u_id, event_name)
 
-        if event_data and event_data.get("vc_id"):
+        if event_data is None and interaction:
+            await interaction.followup.send(content="Event has not been set up for this command :c", ephemeral=True)
+        elif event_data and event_data.get("vc_id"):
             c_channel = interaction.guild.get_channel(event_data.get("vc_id"))
             internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, guild, c_channel)
             interaction.client.dispatch("ext_event_q_creation", interaction, event_name, dates, starts, duration, internal_id, interaction)

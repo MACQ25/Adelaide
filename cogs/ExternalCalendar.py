@@ -4,8 +4,6 @@ from datetime import date, timedelta
 import discord
 from discord.ext import commands
 from discord import app_commands
-
-from cogs.SchedulingInteractions import defer
 from objects.Event import Event
 from CalendarImageGen import draw
 from cogs.InternalEvents import role_deletion, scheduled_events
@@ -214,7 +212,8 @@ class ExternalCalendar(commands.Cog):
 
     @app_commands.command(name="force-refresh", description="Forces a refresh of the pinned calendar")
     async def fr(self, interaction: discord.Interaction):
-        await defer(interaction)
+        # noinspection PyUnresolvedReferences
+        await interaction.response.defer(ephemeral=True)
         await self.update_calendar(interaction.guild.id, interaction)
 
 

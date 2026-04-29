@@ -197,11 +197,11 @@ class Database(commands.Cog):
             raise Exception("Failed to create the event") from e
 
 
-    async def get_events(self, gId):
+    async def get_events(self, g_id):
             try:
                 db = self.client.get_database("scheduling")
                 res = db.guilds.aggregate([
-                    {"$match": {"_id": gId}},
+                    {"$match": {"_id": g_id}},
                     {"$project": {
                         "assigned_channel": 1,
                         "event_data": {
@@ -265,49 +265,6 @@ class Database(commands.Cog):
             raise Exception("Failed to create the event") from e
 
 
-    async def get_date_internals(self, g_id, event_name, indexes):
-        try:
-            db = self.client.get_database("scheduling")
-
-            res = db.guilds.aggregate([
-                {
-                    "$match": {
-                        "_id": g_id,
-                        f"event_days.{event_name}": {"$exists": True}
-                    }
-                },
-                {
-                    "$project": {
-                        "event_days": {
-                            "$filter": {
-                                "input": {
-                                    "$map": {
-                                        "input": {
-                                            "$getField": {
-                                                "field": event_name,
-                                                "input": "$event_days"
-                                            }
-                                        },
-                                        "as": "dates",
-                                        "in": "$$dates.internal_id"
-                                    }
-                                },
-                                "as": "id",
-                                "cond": {"$ne": ["$$id", None]}
-                            }
-                        }
-                    }
-                }
-            ])
-
-            res = next(res, None)
-
-            return res.get("event_days")
-        except Exception as e:
-            print(e)
-            raise Exception("Failed to create the event") from e
-
-
     async def get_internal_data(self, g_id, user_id, event_name):
         try:
             db = self.client.get_database("scheduling")
@@ -326,7 +283,12 @@ class Database(commands.Cog):
                                         "$filter": {
                                             "input": "$event_data",
                                             "as": "event",
-                                            "cond": {"$eq": ["$$event.name", event_name]}
+                                            "cond": {
+                                                "$and": [
+                                                    { "$eq": ["$$event.name", event_name] },
+                                                    { "$ne": [{"$type": "$$event.channel"}, "missing"] }
+                                                ]
+                                            }
                                         }
                                     },
                                     "as": "event",
@@ -384,6 +346,69 @@ class Database(commands.Cog):
             return result.get("event_days")
         except Exception as e:
             print(e)
+
+
+    async def get_date_internals(self, g_id, event_name, indexes):
+            try:
+                db = self.client.get_database("scheduling")
+
+                array_field = {
+                    "$getField": {
+                        "field": event_name,
+                        "input": "$event_days"
+                    }
+                }
+
+                res = db.guilds.aggregate([
+                    {
+                        "$match": {
+                            "_id": g_id,
+                            f"event_days.{event_name}": {"$exists": True}
+                        }
+                    },
+                    {
+                        "$project": {
+                            "event_days": {
+                                "$map": {
+                                    "input": {
+                                        "$filter": {
+                                            "input": {
+                                                "$zip": {
+                                                    "inputs": [
+                                                        {"$range": [0, {"$size": array_field}]},
+                                                        array_field
+                                                    ]
+                                                }
+                                            },
+                                            "as": "pair",
+                                            "cond": {
+                                                "$and": [
+                                                    {"$in": [{"$arrayElemAt": ["$$pair", 0]}, indexes]},
+                                                    {"$ne": [
+                                                        {"$getField": {
+                                                            "field": "internal_id",
+                                                            "input": {"$arrayElemAt": ["$$pair", 1]}
+                                                        }},
+                                                        None
+                                                    ]}
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "as": "pair",
+                                    "in": {"$arrayElemAt": ["$$pair", 1]}
+                                }
+                            }
+                        }
+                    }
+                ])
+
+                res = next(res, None)
+
+                return res.get("event_days")
+            except Exception as e:
+                print(e)
+                raise Exception("Failed to create the event") from e
 
 
     async def get_all_with_assigned(self):

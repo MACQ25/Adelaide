@@ -23,7 +23,7 @@ class SchedulingInteractions(commands.Cog):
         return [ app_commands.Choice(name=item, value=item) for item in owned if item.__contains__(current) or current.__len__() == 0]
 
 
-    async def event_dates_autocomplete(self, interaction: discord.Interaction) -> list[app_commands.Choice[str]]:
+    async def event_dates_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         evt_name = interaction.namespace.name
         scheduled = await self.db.get_by_class(interaction.guild_id, evt_name)
 
