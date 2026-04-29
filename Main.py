@@ -115,8 +115,7 @@ async def perform_cleanup(cleanup_func: Optional[Callable] = None):
             asyncio.create_task(issue_updates())
 
 
-tkn = open("secrets/token.tkn").readline().strip()
-
+tkn = os.getenv("BOT_TOKEN", open("secrets/token.tkn").readline().strip())
 
 async def load():
     for filename in os.listdir("./cogs"):

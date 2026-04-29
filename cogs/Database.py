@@ -1,3 +1,4 @@
+import os
 from datetime import datetime as dt, timezone
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
@@ -12,7 +13,7 @@ class Database(commands.Cog):
     def __init__(self, bot):
 
         self.bot = bot
-        self.tkn = open("./secrets/mongoAccount.tkn").readline().strip()
+        self.tkn = os.getenv("DB_TOKEN", open("./secrets/mongoAccount.tkn").readline().strip())
         self.client = MongoClient("mongodb+srv://{}@cluster0.x5r2p5q.mongodb.net/?appName=Cluster0".format(self.tkn), server_api=ServerApi('1'))
 
 
