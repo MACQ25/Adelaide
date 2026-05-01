@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from typing import Callable, Optional, Any
-
 from discord._types import ClientT
-
 from objects.Event import Event
 import discord
 from discord.ext.commands import Bot
 from discord import ui, Interaction
-
 from objects.EventColorEnum import EventColor
+import datetime as dt
 
 
 class TextModal(ui.Modal, title="Modal Title"):
@@ -175,23 +173,46 @@ class FrequencySelect(ui.ActionRow['EventSettings']):
 
 
 class DatesModal(ui.Modal, title="Modal Title"):
-    datesInput = ui.TextInput(label="dates", style=discord.TextStyle.paragraph, required=True)
+
 
     def __init__(self, view: 'EventSettings', button: SetDatesButton):
         super().__init__()
         self.view = view
         self.values = view.data
         self.button = button
-        self.datesInput.default = ",\n".join(self.values.dates)
+
+        if self.view.malformed_dates:
+            self.correction_display = ui.TextDisplay(f"Errors were found, following dates were invalid:\n {"\n".join(self.view.malformed_dates)} \n Errors will be deleted upon submission")
+            self.add_item(self.correction_display)
+
+        self.datesInput = ui.TextInput(
+            label="dates",
+            default=",\n".join([d.strftime("%Y-%m-%d %H:%M:%S%z") for d in  self.values.dates]),
+            style=discord.TextStyle.paragraph,
+            required=True,
+        )
+
+        self.add_item(self.datesInput)
 
     async def on_submit(self, interaction: discord.Interaction[Bot]) -> None:
         try:
-            self.values.dates = [d.strip() for d in self.datesInput.value.split(",") if d.strip()]
+            self.view.malformed_dates.clear()
+            upd_dates = []
+            for d in self.datesInput.value.split(","):
+                try:
+                    n_date = dt.datetime.strptime(d.strip(),"%Y-%m-%d %H:%M:%S%z")
+                    upd_dates.append(n_date)
+                except ValueError:
+                    self.view.malformed_dates.append(d)
 
+            self.values.dates = upd_dates
             self.view.finish_button.disabled = not self.view.is_valid
+
+            self.view.build()
             await interaction.response.edit_message(view=self.view)
         except ValueError:
-            await interaction.response.send_message('Something Went Wrong.', ephemeral=True)
+            await interaction.response.send_message('I am a error message and dumb and stupid.', ephemeral=True)
+
 
 
 class SetDatesButton(ui.Button['EventSettings']):
@@ -408,6 +429,8 @@ class EventSettings(ui.LayoutView):
             self.create_channel = ToggleButton("channel_flag", self.channel_flag, "Create 🛠️", "Use 🪧", self.build)
             self.configure_creation = AdvCreationButton(self.data)
 
+        self.malformed_dates = []
+
         self.build()
 
 
@@ -449,10 +472,18 @@ class EventSettings(ui.LayoutView):
         container.add_item(self.color_select)
 
 
-        container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.large))
+        section_items = [
+            ui.TextDisplay('## Date Information\n-# Days and hours in which the event will happen.'),
+        ]
+
+        if self.malformed_dates:
+            section_items.append(
+                ui.TextDisplay(f"Errors were found, following dates are invalid:\n {"\n".join(self.malformed_dates)}")
+            )
+
         container.add_item(
             ui.Section(
-                ui.TextDisplay('## Date Information\n-# Days and hours in which the event will happen.'),
+                *section_items,
                 accessory=self.event_dates_btn
             )
         )

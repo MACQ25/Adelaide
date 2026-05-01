@@ -39,17 +39,16 @@ async def scheduled_events(ev_name: str, ev_description: str, dates: list, durat
     id_list = []
 
     for ind, date in enumerate(dates):
-        date_obj = dt.datetime.strptime(date, "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
 
         now = dt.datetime.now().replace(tzinfo=dt.timezone.utc)
-        if date_obj > now:
+        if date > now:
 
-            end_time = date_obj + dt.timedelta(hours=int(duration[ind] if isinstance(duration, list) else duration))
+            end_time = date + dt.timedelta(hours=int(duration[ind] if isinstance(duration, list) else duration))
 
             s_event = await guild.create_scheduled_event(
                 name=ev_name,
                 description=ev_description,
-                start_time=date_obj,
+                start_time=date,
                 end_time=end_time,
                 entity_type=discord.EntityType.voice,
                 channel=channel,
@@ -97,9 +96,10 @@ class InternalEvents(commands.Cog):
     async def on_event_full_creation_scheduling(self, interaction: discord.Interaction, event: Event):
         try:
             guild = interaction.guild
-            c_channel = guild.get_channel(event.voice_channel)
 
-            event.int_evt = await scheduled_events(event.summary, event.description, event.dates, event.duration, guild, c_channel, interaction.user)
+            c_channel = guild.get_channel(event.voice_channel) if event.created_for_event else event.channel
+
+            event.int_evt = await scheduled_events(event.summary, event.description, event.dates, event.duration, guild, c_channel)
 
             event.role = await role_creation(interaction, event)
             interaction.client.dispatch("ext_event_creation", interaction, event)
@@ -109,11 +109,21 @@ class InternalEvents(commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_notify_invitations(self, interaction: discord.Interaction, role_id: int, channel_id: int, mentions: list):
+    async def on_notify_invitations(self, interaction: discord.Interaction, role_id: int, channel_id: int, mentions: list, internal_id: list = None):
         guild = interaction.guild
         assert all(isinstance(m, discord.Member) for m in mentions)
         cleaned_mentions = (", ".join(f"<@{user.id}>" for user in mentions if user.id is not interaction.user.id))
-        await guild.get_channel(channel_id).send(content=f"Welcome! this is the official channel of <@&{role_id}>\n <@{interaction.user.id}> has invited you to join\n" + cleaned_mentions)
+
+        channel = guild.get_channel(channel_id)
+
+        await channel.send(content=f"Welcome! this is the official channel of <@&{role_id}>\n <@{interaction.user.id}> has invited you to join\n" + cleaned_mentions)
+
+        if internal_id:
+           if internal_id[0] > 0:
+               event = await guild.fetch_scheduled_event(internal_id[0])
+               if event:
+                   await channel.send(f"{event.url}")
+
 
 
     @commands.Cog.listener()

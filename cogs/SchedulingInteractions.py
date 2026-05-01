@@ -7,6 +7,8 @@ from cogs.ExternalCalendar import check_permissions_assigned, lacks_perms_msg
 from objects.Event import Event, format_dates
 from objects.EventColorEnum import EventColor
 from objects.EventSettingsUI import EventSettings
+import zoneinfo
+
 
 async def defer(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)  # type: ignore[attr-defined]
@@ -67,6 +69,11 @@ class SchedulingInteractions(commands.Cog):
         return choices
 
 
+    async def timezone_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        zones = sorted(zoneinfo.available_timezones())
+        return [ app_commands.Choice(name=tz, value=tz) for tz in zones if current.lower() in tz.lower()][:25]
+
+
     @app_commands.command(name="check", description="helper function to check if database is currently available")
     async def check(self, interaction: discord.Interaction):
         await defer(interaction)
@@ -112,14 +119,11 @@ class SchedulingInteractions(commands.Cog):
     )
     @app_commands.describe(
         name="The name of the event",
-        desc="A brief description of the event",
         mode="Frequency with which the event happens (picked is specific dates)",
         dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed",
-        color="Color with which you want the event to be associated (Calendar specific)",
-        starts="Start time of event, in 24 hour format (Defaults to 7 p.m)",
-        duration="Duration of event in hours (Defaults to 4)"
+        color="Color with which you want the event to be associated (Calendar specific)"
     )
-    async def create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, color: app_commands.Choice[str]=None, mode:int=1, desc:str=""):
+    async def create(self, interaction: discord.Interaction, name:str, dates:str, color: app_commands.Choice[str]=None, mode:int=1):
         """Shows the settings view."""
         await defer(interaction)
         if not await self.db.check_if_exists(interaction.id, name):
@@ -127,12 +131,12 @@ class SchedulingInteractions(commands.Cog):
                 event = Event(
                     owner=interaction.user.id,
                     name=name,
-                    description=desc,
+                    description="",
                     colour=[color.value] if color is not None else [None],
                     mode=str(mode),
                     dates=dates,
-                    starts=starts,
-                    duration=duration
+                    starts=19,
+                    duration=4
                 )
                 view = EventSettings(interaction.user, event)
                 await interaction.followup.send(view=view, ephemeral=True)
@@ -161,9 +165,11 @@ class SchedulingInteractions(commands.Cog):
         color="Color with which you want the event to be associated (Calendar specific)",
         starts="Start time of event, in 24 hour format (Defaults to 7 p.m)",
         duration="Duration of event in hours (Defaults to 4)",
+        timezone="Your current timezone",
         create_channel="For Scheduled Events set up, use existing or create new section?"
     )
-    async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False):
+    @app_commands.autocomplete(timezone=timezone_autocomplete)
+    async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, timezone:str="", color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False):
         await defer(interaction)
         if not await self.db.check_if_exists(interaction.id, name):
             try:
@@ -175,7 +181,8 @@ class SchedulingInteractions(commands.Cog):
                     mode=str(mode),
                     dates=dates,
                     starts=starts,
-                    duration=duration
+                    duration=duration,
+                    timezone=timezone
                 )
                 view = EventSettings(interaction.user, event, True, create_channel)
                 await interaction.followup.send(view=view, ephemeral=True)
@@ -198,7 +205,7 @@ class SchedulingInteractions(commands.Cog):
     @app_commands.command(name="fcq", description="Full Scheduling of an event the user owns, skips the modal")
     @app_commands.describe( name="The name of the event", dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed", start_time="Start time of the event to create", duration="Duration of the event, in hours")
     @app_commands.autocomplete(name=owned_events_autocomplete)
-    async def quick_full_create(self, interaction: discord.Interaction, name:str, dates:str, start_time:int=19, duration:int=4):
+    async def quick_full_create(self, interaction: discord.Interaction, name:str, dates:str, start_time:int=19, duration:int=4, timezone:str=""):
         await defer(interaction)
         interaction.client.dispatch("quick_creation", interaction.guild, interaction.user.id, name, format_dates(dates, start_time), start_time, duration, event_data=None, interaction=interaction)
 

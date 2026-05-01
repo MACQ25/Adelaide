@@ -1,23 +1,24 @@
 import datetime as dt
 from dataclasses import field
-from typing import List, Union
-
+from typing import List, Union, Any
+from zoneinfo import ZoneInfo
 import discord
 
 
-def format_dates(dates:str, start_time:int=19):
-    date_list = dates.split(",")
+def format_dates(dates:str, start_time:int=19, tmz_s=None):
+    date_list: list[Any] = dates.split(",")
     current = dt.datetime.now()
+    tz = ZoneInfo(tmz_s or "America/Merida")
     for i, d in enumerate(date_list):
         try:
             spl = [int(itm.strip()) for itm in d.split("-")]
             if len(spl) == 1:
-                date_stamp = dt.datetime(current.year, current.month, spl[0], hour=start_time)
+                date_stamp = dt.datetime(current.year, current.month, spl[0], hour=start_time, tzinfo=tz)
             elif len(spl) == 2:
-                date_stamp = dt.datetime(current.year, spl[0], spl[1], hour=start_time)
+                date_stamp = dt.datetime(current.year, spl[0], spl[1], hour=start_time, tzinfo=tz)
             else:
-                date_stamp = dt.datetime(spl[0], spl[1], spl[2], hour=start_time)
-            date_list[i] = date_stamp.__str__()
+                date_stamp = dt.datetime(spl[0], spl[1], spl[2], hour=start_time, tzinfo=tz)
+            date_list[i] = date_stamp
         except TypeError:
             raise TypeError()
         except ValueError:
@@ -26,7 +27,7 @@ def format_dates(dates:str, start_time:int=19):
 
 class Event:
 
-    def __init__(self, owner:int, name:str, description:str, mode:str, dates:str, starts:int, duration:int, colour:List[str] = None):
+    def __init__(self, owner:int, name:str, description:str, mode:str, dates:str, starts:int, duration:int, colour:List[str] = None, timezone:str = None):
         # Unique information saved on its own folder, relational style
         self.owner = owner
 
@@ -42,7 +43,7 @@ class Event:
         self.frequency = int(mode)
 
         # Saved on a general ID tracked list of dates, based on server
-        self.dates = format_dates(dates, start_time=starts)
+        self.dates = format_dates(dates, start_time=starts, tmz_s=timezone)
         self.starts = starts
         self.duration = duration
 

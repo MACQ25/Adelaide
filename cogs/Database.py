@@ -107,8 +107,9 @@ class Database(commands.Cog):
             # 2. Add dates and owner only if not already present
             new_dates = [
                 {
-                    "date": dt.strptime(date, "%Y-%m-%d %H:%M:%S"),
-                    "starts": dt.strptime(date, "%Y-%m-%d %H:%M:%S").hour,
+                    "date": date,
+                    "timezone": date.tzinfo,
+                    "starts": date.hour,
                     "duration": event.duration,
                     "internal_id": event.int_evt[ind] if len(event.int_evt) > ind else None
                 }

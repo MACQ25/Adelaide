@@ -124,8 +124,9 @@ class ExternalCalendar(commands.Cog):
                     "notify_invitations",
                     interaction,
                     event.role,
-                    event.text_channel if event.created_for_event else event.voice_channel,
-                    event.members
+                    event.text_channel if event.created_for_event else event.channel.id,
+                    event.members,
+                    event.int_evt
                 )
 
 
