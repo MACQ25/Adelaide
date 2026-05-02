@@ -96,6 +96,15 @@ async def draw(guild_id: int, events: list):
     img = Image.new("RGBA",(w,h), (255,255,255))
     draw = ImageDraw.Draw(img)
 
+    current_date = dt.today()
+    date =int(current_date.strftime('%d'))
+    month = int(current_date.strftime('%m'))
+    year = int(current_date.strftime('%y'))
+
+    month_len = calendar.monthrange(year, month)
+
+    long_month = month_len[1] > 30 and (month_len[0] is calendar.FRIDAY or month_len[0] is calendar.SATURDAY)
+
     top_span = 80
     border = 10
     h_start = border + top_span
@@ -103,7 +112,7 @@ async def draw(guild_id: int, events: list):
     w_start = border
     w_end = w - border
     stepsizeV = int((w - (border * 2)) / 7)
-    stepsizeH = int((h - (top_span + (border * 2))) / 5)
+    stepsizeH = int((h - (top_span + (border * 2))) / 6 if long_month else 5)
 
     for x in range (border, w, stepsizeV):
         draw.line(((x, h_start), (x, h_end)), fill=1, width=3)
@@ -128,12 +137,7 @@ async def draw(guild_id: int, events: list):
         rows.append(x + stepsizeH // 10)
         draw.line(line, fill=50, width=3)
 
-    current_date = dt.today()
-    date =int(current_date.strftime('%d'))
-    month = int(current_date.strftime('%m'))
-    year = int(current_date.strftime('%y'))
 
-    month_len = calendar.monthrange(year, month)
     k = (dt.today().replace(day=1).weekday() + 1) % 7
     i = 1
     j = 0

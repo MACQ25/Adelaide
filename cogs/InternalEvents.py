@@ -4,6 +4,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from typing import Callable, Optional
+
+from objects.AutocompleteMixin import AutocompleteMixin
 from objects.Event import Event
 
 
@@ -61,10 +63,11 @@ async def scheduled_events(ev_name: str, ev_description: str, dates: list, durat
     return id_list
 
 
-class InternalEvents(commands.Cog):
+class InternalEvents(AutocompleteMixin, commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.get_cog("Database")
+        self.setup_db(self.bot)
 
 
     async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

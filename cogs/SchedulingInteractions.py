@@ -3,7 +3,7 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 from discord import app_commands
-from cogs.ExternalCalendar import check_permissions_assigned, lacks_perms_msg
+from objects.AutocompleteMixin import AutocompleteMixin
 from objects.Event import Event, format_dates
 from objects.EventColorEnum import EventColor
 from objects.EventSettingsUI import EventSettings
@@ -14,64 +14,11 @@ async def defer(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)  # type: ignore[attr-defined]
 
 
-class SchedulingInteractions(commands.Cog):
+class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.get_cog("Database")
-
-
-    async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-        owned = await self.db.get_by_user(interaction.guild_id, interaction.user.id)
-        return [ app_commands.Choice(name=item, value=item) for item in owned if item.__contains__(current) or current.__len__() == 0]
-
-
-    async def event_dates_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-        evt_name = interaction.namespace.name
-        scheduled = await self.db.get_by_class(interaction.guild_id, evt_name)
-
-        scheduled = [ val.get('date').strftime("%B %d of %Y") for val in scheduled ]
-
-        entered_dates = [d.strip() for d in interaction.namespace.dates.split(",")]
-        registered_values = [str(i) for i, n in enumerate(scheduled) if n in entered_dates]
-        confirmed = [scheduled[int(i)] for i in registered_values]
-        query = next((x for x in entered_dates if x not in confirmed), None)
-
-        # [ app_commands.Choice(name=str(item[1]), value=str(item[0])) for item in scheduled if str(item[1]).__contains__(current) or current.__len__() == 0 ]
-
-        choices = []
-
-        if len(registered_values) > 0:
-            choices.append(app_commands.Choice(
-                name=', '.join(confirmed),
-                value=', '.join(registered_values)
-            ))
-
-        for ind, item in enumerate(scheduled):
-            if item in confirmed or str(ind) in registered_values:
-                continue
-
-            if query and query not in item:
-                continue
-
-            if len(registered_values) > 0:
-                full_value = f"{",".join(registered_values)}, {ind}"
-
-                choices.append(app_commands.Choice(
-                    name=f'{", ".join(confirmed)}, {item}',
-                    value=full_value,
-                ))
-            else:
-                choices.append(app_commands.Choice(
-                    name=item,
-                    value= str(ind)
-                ))
-
-        return choices
-
-
-    async def timezone_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-        zones = sorted(zoneinfo.available_timezones())
-        return [ app_commands.Choice(name=tz, value=tz) for tz in zones if current.lower() in tz.lower()][:25]
+        self.setup_db(self.bot)
 
 
     @app_commands.command(name="check", description="helper function to check if database is currently available")
@@ -79,33 +26,6 @@ class SchedulingInteractions(commands.Cog):
         await defer(interaction)
         await self.db.ping()
         await interaction.followup.send("Done!", ephemeral=True)
-
-
-    @app_commands.command(name="assign",
-                          description="Assigns a discord channel to which the bot will publish scheduled events")
-    @app_commands.default_permissions(administrator=True)
-    @app_commands.checks.has_permissions(administrator=True)
-    async def assign_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        await defer(interaction)
-        result_msg = ""
-        send_update_out = False
-
-        perms = await check_permissions_assigned(self.bot, channel)
-        try:
-            if all(perms.values()):
-                await self.db.save_assigned(interaction.guild.id, channel)
-                result_msg = "Channel updated to {}".format(channel)
-                send_update_out = True
-        except Exception:
-            result_msg = "Could not update to target channel"
-        finally:
-            if not all(perms.values()):
-                result_msg = lacks_perms_msg(self.bot, channel, perms)
-
-            await interaction.followup.send(result_msg, ephemeral=True)
-
-            if send_update_out:
-                await self.bot.get_cog("ExternalCalendar").update_calendar(interaction.guild.id, interaction)
 
 
     @app_commands.command(name="create", description="opens modal for event creation")
@@ -168,7 +88,6 @@ class SchedulingInteractions(commands.Cog):
         timezone="Your current timezone",
         create_channel="For Scheduled Events set up, use existing or create new section?"
     )
-    @app_commands.autocomplete(timezone=timezone_autocomplete)
     async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, timezone:str="", color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False):
         await defer(interaction)
         if not await self.db.check_if_exists(interaction.id, name):
@@ -196,7 +115,7 @@ class SchedulingInteractions(commands.Cog):
 
     @app_commands.command(name="cq", description="Schedules events based on pre-existing one from the user, skipping the modal")
     @app_commands.describe( name="The name of the event", dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed" )
-    @app_commands.autocomplete(name=owned_events_autocomplete)
+    @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
     async def quick_create(self, interaction: discord.Interaction, name:str, dates:str):
         await defer(interaction)
         interaction.client.dispatch("ext_event_q_creation", interaction.guild, interaction.user.id, name, format_dates(dates), 19, 4, int_events_id=None, interaction=interaction)
@@ -204,7 +123,7 @@ class SchedulingInteractions(commands.Cog):
 
     @app_commands.command(name="fcq", description="Full Scheduling of an event the user owns, skips the modal")
     @app_commands.describe( name="The name of the event", dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed", start_time="Start time of the event to create", duration="Duration of the event, in hours")
-    @app_commands.autocomplete(name=owned_events_autocomplete)
+    @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
     async def quick_full_create(self, interaction: discord.Interaction, name:str, dates:str, start_time:int=19, duration:int=4, timezone:str=""):
         await defer(interaction)
         interaction.client.dispatch("quick_creation", interaction.guild, interaction.user.id, name, format_dates(dates, start_time), start_time, duration, event_data=None, interaction=interaction)
@@ -216,7 +135,7 @@ class SchedulingInteractions(commands.Cog):
         dates="Comma-separated list of dates, empty will assume the closest date",
         all="Deletes all currently scheduled dates without setting it to inactive, overrides dates field"
     )
-    @app_commands.autocomplete( name=owned_events_autocomplete, dates=event_dates_autocomplete )
+    @app_commands.autocomplete( name=AutocompleteMixin.owned_events_autocomplete, dates=AutocompleteMixin.event_dates_autocomplete )
     async def delete(self, interaction: discord.Interaction, name:str, dates:str="", all:bool=False):
         await defer(interaction)
         interaction.client.dispatch("ext_event_cancellation", interaction, name, dates.split(","), all)
@@ -224,7 +143,7 @@ class SchedulingInteractions(commands.Cog):
 
     @app_commands.command(name="hiatus", description="Drops all forthcoming dates for the entered event and sets it as inactive")
     @app_commands.describe(name="Name of event class, so long cowboy", status="What is its status? (False = Hiatus)")
-    @app_commands.autocomplete(name=owned_events_autocomplete)
+    @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
     async def hiatus(self, interaction: discord.Interaction, name:str, status:bool):
         await defer(interaction)
         interaction.client.dispatch("ext_event_hiatus", interaction, name, status)
@@ -232,7 +151,7 @@ class SchedulingInteractions(commands.Cog):
 
     @app_commands.command(name="delete", description="deletes all associated information to one given event, data, dates, etc")
     @app_commands.describe(name="Name The Victim")
-    @app_commands.autocomplete(name=owned_events_autocomplete)
+    @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
     async def full_delete(self, interaction: discord.Interaction, name:str):
         await defer(interaction)
         interaction.client.dispatch("ext_event_full_clean", interaction, name)

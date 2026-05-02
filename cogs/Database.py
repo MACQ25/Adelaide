@@ -1,7 +1,9 @@
+import datetime
 import os
 from datetime import datetime as dt, timezone
 from typing import Any
-
+from zoneinfo import ZoneInfo
+from bson import CodecOptions
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from discord.ext import commands
@@ -163,7 +165,7 @@ class Database(commands.Cog):
                         f'event_days.{event_name}': {
                             '$each': [
                                 {
-                                    "date": dt.strptime(d, "%Y-%m-%d %H:%M:%S"),
+                                    "date": d,
                                     "starts": starts_at,
                                     "duration": duration,
                                     "internal_id": internal_id_list[i] if internal_id_list and len(internal_id_list) > i else None
@@ -199,11 +201,21 @@ class Database(commands.Cog):
 
 
     async def get_events(self, g_id):
-            try:
-                db = self.client.get_database("scheduling")
-                res = db.guilds.aggregate([
-                    {"$match": {"_id": g_id}},
-                    {"$project": {
+        try:
+            db = self.client.get_database("scheduling")
+
+            guild_meta = db.guilds.find_one(
+                {"_id": g_id},
+                {"timezone": 1}
+            )
+            tz = ZoneInfo(guild_meta.get("timezone", "UTC"))
+
+            codec_opts = CodecOptions(tz_aware=True, tzinfo=tz)
+            db_tz = self.client.get_database("scheduling", codec_options=codec_opts)
+            res = db_tz.guilds.aggregate([
+                {"$match": {"_id": g_id}},
+                {
+                    "$project": {
                         "assigned_channel": 1,
                         "event_data": {
                             "$map": {
@@ -211,7 +223,12 @@ class Database(commands.Cog):
                                     "$filter": {
                                         "input": "$event_data",
                                         "as": "event",
-                                        "cond": {"$eq": ["$$event.active", True]}
+                                        "cond": {
+                                            "$eq": [
+                                                "$$event.active",
+                                                True
+                                            ]
+                                        }
                                     }
                                 },
                                 "as": "event",
@@ -222,13 +239,39 @@ class Database(commands.Cog):
                                 }
                             }
                         },
-                        "event_days": 1
-                    }}
-                ]).next()
-                return res
-            except Exception as e:
-                print(e)
-                raise Exception("Failed to acquire events")
+                        "event_days": {
+                            "$arrayToObject": {
+                                "$map": {
+                                    "input": {
+                                        "$objectToArray": "$event_days"
+                                    },
+                                    "as": "kp",
+                                    "in": {
+                                        "k": "$$kp.k",
+                                        "v": {
+                                            "$filter": {
+                                                "input": "$$kp.v",
+                                                "as": "date_obj",
+                                                "cond": {
+                                                    "$gte": [
+                                                        "$$date_obj.date",
+                                                        dt.today().astimezone(tz).replace(day=1, hour=0, second=0)
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "timezone": 1
+                    }
+                }
+            ]).next()
+            return res
+        except Exception as e:
+            print(e)
+            raise Exception("Failed to acquire events")
 
 
     async def get_by_user(self, g_id, user_id):
@@ -710,6 +753,32 @@ class Database(commands.Cog):
                     }
                 }
             )
+
+        except Exception as e:
+            print(e)
+
+
+    async def update_timezone(self, g_id, tmz):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                filter={
+                    "_id": g_id,
+                },
+                update={
+                    "$set": {
+                        f"timezone": tmz
+                    }
+                },
+                upsert=True
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event.")
+                return False
+
+            return True
 
         except Exception as e:
             print(e)

@@ -1,9 +1,13 @@
 import calendar
-from datetime import datetime as dt
+from datetime import datetime as dt, tzinfo, datetime
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo
+
 import discord
 from discord.ext import commands
 from discord import app_commands
+from cogs.SchedulingInteractions import defer
+from objects.AutocompleteMixin import AutocompleteMixin
 from objects.Event import Event
 from CalendarImageGen import draw
 from cogs.InternalEvents import role_deletion, scheduled_events
@@ -28,18 +32,19 @@ def lacks_perms_msg(bot, channel, permission_dict):
     return f"Could not set up channel, missing permissions for <@{bot.user.id}> on <#{channel.id}>\n\n**MISSING**:\n" + "\n".join([k for k in permission_dict.keys() if not permission_dict[k]])
 
 
-
-class ExternalCalendar(commands.Cog):
+class ExternalCalendar(AutocompleteMixin, commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.get_cog("Database")
+        self.setup_db(self.bot)
 
 
     async def update_calendar(self, guild_id: int, interaction:discord.Interaction = None):
         data =  await self.db.get_events(guild_id)
 
-        current_day = dt.today()
-        event_labels = [list() for _ in range(calendar.monthrange(current_day.year, current_day.month)[1])]
+        tmz = data.get("timezone", "UTC")
+        upd_time = dt.today().astimezone(ZoneInfo(tmz))
+        event_labels = [list() for _ in range(calendar.monthrange(upd_time.year, upd_time.month)[1])]
 
         colors = {e["name"]: e["color"] for e in data.get("event_data", [])}
 
@@ -48,7 +53,7 @@ class ExternalCalendar(commands.Cog):
                 continue
             for ev in pair[1]:
                 #dt.fromisoformat(ev.get('date').split()[0]).day - 1
-                l_date: date = ev.get('date')
+                l_date: datetime = ev.get('date')
                 event_labels[l_date.day - 1].append([pair[0], colors[pair[0]]])
 
         img = await draw(guild_id=guild_id, events=event_labels)
@@ -78,10 +83,10 @@ class ExternalCalendar(commands.Cog):
 
 
                 file = discord.File(img, filename="Calendar.jpeg")
-                embed = discord.Embed(title=f"📅 {dt.now().strftime("%B")} Calendar", color=discord.Color.blue())
+                embed = discord.Embed(title=f"📅 {upd_time.strftime("%B")} Calendar", color=discord.Color.blue())
                 embed.set_image(url="attachment://Calendar.jpeg")
                 embed.description = "Scheduled Events: " + ", ".join(f"<@&{r.get('role_id')}>" for r in data.get("event_data", []) if 'role_id' in r)
-                embed.set_footer(text=f"Last updated: {dt.today().strftime('%Y-%m-%d %H:%M')}")
+                embed.set_footer(text=f"Last updated: {upd_time.strftime('%Y-%m-%d %H:%M')}, {tmz}")
 
                 msg = await a_channel.send(embed=embed, file=file)
                 await msg.pin()
@@ -216,6 +221,41 @@ class ExternalCalendar(commands.Cog):
         # noinspection PyUnresolvedReferences
         await interaction.response.defer(ephemeral=True)
         await self.update_calendar(interaction.guild.id, interaction)
+
+
+    @app_commands.command(name="server_timezone", description="Assigns a timezone to this server, used when constructing the calendar for technical purposes")
+    @app_commands.autocomplete(timezone=AutocompleteMixin.timezone_autocomplete)
+    async def tmz(self, interaction: discord.Interaction, timezone:str):
+        await defer(interaction)
+        upd = await self.db.update_timezone(interaction.guild_id, timezone)
+        await interaction.followup.send(content=f"Update successful, updated to {timezone}" if upd else "Something went wrong, likely connection to the Database")
+
+
+    @app_commands.command(name="assign",
+                              description="Assigns a discord channel to which the bot will publish scheduled events")
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def assign_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await defer(interaction)
+        result_msg = ""
+        send_update_out = False
+
+        perms = await check_permissions_assigned(self.bot, channel)
+        try:
+            if all(perms.values()):
+                await self.db.save_assigned(interaction.guild.id, channel)
+                result_msg = "Channel updated to {}".format(channel)
+                send_update_out = True
+        except Exception:
+            result_msg = "Could not update to target channel"
+        finally:
+            if not all(perms.values()):
+                result_msg = lacks_perms_msg(self.bot, channel, perms)
+
+            await interaction.followup.send(result_msg, ephemeral=True)
+
+            if send_update_out:
+                await self.bot.get_cog("ExternalCalendar").update_calendar(interaction.guild.id, interaction)
 
 
 async def setup(bot: commands.Bot):
