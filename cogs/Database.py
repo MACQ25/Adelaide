@@ -215,6 +215,48 @@ class Database(commands.Cog):
             res = db_tz.guilds.aggregate([
                 {"$match": {"_id": g_id}},
                 {
+                    "$addFields": {
+                        "filtered_days": {
+                            "$arrayToObject": {
+                                "$filter": {
+                                    "input": {
+                                        "$map": {
+                                            "input": {
+                                                "$objectToArray": "$event_days"
+                                            },
+                                            "as": "kp",
+                                            "in": {
+                                                "k": "$$kp.k",
+                                                "v": {
+                                                    "$filter": {
+                                                        "input": "$$kp.v",
+                                                        "as": "date_obj",
+                                                        "cond": {
+                                                            "$gte": [
+                                                                "$$date_obj.date",
+                                                                dt.today().astimezone(tz).replace(day=1, hour=0, second=0)
+                                                            ]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "as": "kp",
+                                    "cond": {
+                                        "$gt": [
+                                            {
+                                                "$size": "$$kp.v"
+                                            },
+                                            0
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                {
                     "$project": {
                         "assigned_channel": 1,
                         "event_data": {
@@ -224,9 +266,27 @@ class Database(commands.Cog):
                                         "input": "$event_data",
                                         "as": "event",
                                         "cond": {
-                                            "$eq": [
-                                                "$$event.active",
-                                                True
+                                            "$and": [
+                                                {
+                                                    "$eq": [
+                                                        "$$event.active",
+                                                        True
+                                                    ]
+                                                },
+                                                {
+                                                    "$in": [
+                                                        "$$event.name",
+                                                        {
+                                                            "$map": {
+                                                                "input": {
+                                                                    "$objectToArray": "$filtered_days"
+                                                                },
+                                                                "as": "kp",
+                                                                "in": "$$kp.k"
+                                                            }
+                                                        }
+                                                    ]
+                                                }
                                             ]
                                         }
                                     }
@@ -239,31 +299,7 @@ class Database(commands.Cog):
                                 }
                             }
                         },
-                        "event_days": {
-                            "$arrayToObject": {
-                                "$map": {
-                                    "input": {
-                                        "$objectToArray": "$event_days"
-                                    },
-                                    "as": "kp",
-                                    "in": {
-                                        "k": "$$kp.k",
-                                        "v": {
-                                            "$filter": {
-                                                "input": "$$kp.v",
-                                                "as": "date_obj",
-                                                "cond": {
-                                                    "$gte": [
-                                                        "$$date_obj.date",
-                                                        dt.today().astimezone(tz).replace(day=1, hour=0, second=0)
-                                                    ]
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        },
+                        "event_days": "$filtered_days",
                         "timezone": 1
                     }
                 }

@@ -5,7 +5,6 @@ from datetime import date as dt
 import calendar
 import asyncio
 
-w, h = 1420, 1200
 
 def channel(i, c, size, startFill, stopFill, degree=0.2):
     """calculate the value of a single color channel for a single pixel"""
@@ -93,9 +92,6 @@ async def draw(guild_id: int, events: list):
     weekdays = ImageFont.truetype(font_path, 32)
     font = ImageFont.truetype(font_path, 16)
 
-    img = Image.new("RGBA",(w,h), (255,255,255))
-    draw = ImageDraw.Draw(img)
-
     current_date = dt.today()
     date =int(current_date.strftime('%d'))
     month = int(current_date.strftime('%m'))
@@ -104,6 +100,13 @@ async def draw(guild_id: int, events: list):
     month_len = calendar.monthrange(year, month)
 
     long_month = month_len[1] > 30 and (month_len[0] is calendar.FRIDAY or month_len[0] is calendar.SATURDAY)
+
+    w, h = 1420, 1400 if long_month else 1200
+
+
+    img = Image.new("RGBA",(w,h), (255,255,255))
+    draw = ImageDraw.Draw(img)
+
 
     top_span = 80
     border = 10
