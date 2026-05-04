@@ -146,7 +146,7 @@ async def perform_cleanup(cleanup_func: Optional[Callable] = None):
         time_to_next = ((month_len[1] - c_time.day) * 86400) + (86400 - ((((c_time.hour * 60) + c_time.minute) * 60) + c_time.second))
         print(c_time)
         print(f"{time_to_next} seconds til next execution")
-        await asyncio.sleep(time_to_next)
+        await asyncio.sleep(10)
         if cleanup_func is not None:
             await renew_frequents()
             await cleanup_func()
