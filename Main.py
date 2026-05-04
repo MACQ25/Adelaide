@@ -1,5 +1,8 @@
 import datetime as dt
+from datetime import tzinfo
 from typing import Callable, Optional
+from zoneinfo import ZoneInfo
+
 import discord
 from aiohttp.log import client_logger
 from discord.ext import commands
@@ -64,15 +67,25 @@ async def renew_frequents():
         for event in guild.get("event_data"):
 
             date_sample = event.get("date_samp")
-            starting_from: dt.datetime = date_sample.get("date")
+            tz = ZoneInfo(date_sample.get("timezone", {}).get("tz_name", None) or event.get("guild_tz", {}).get("tz_name", "UTC"))
+            cur = dt.datetime.today().astimezone(tz)
+            starting_from: dt.datetime = date_sample.get("date").astimezone(tz)
 
             if event.get("frequency") == 2:
                 wd = starting_from.weekday()
+                cal = calendar.monthcalendar(cur.year, cur.month)
 
-                new_batch = list()
-                for x in range(5):
+                for week in cal:
+                    day = week[wd]
+                    if day != 0:
+                        starting_from = starting_from.replace(month=cur.month, day=day, tzinfo=tz)
+                        break
+
+                new_batch = list([starting_from])
+
+                for x in range(4):
                     n_date = starting_from + dt.timedelta(weeks=x + 1)
-                    if n_date.month == starting_from.month + 1:
+                    if n_date.month < starting_from.month + 1:
                         new_batch.append(n_date)
                 dates = new_batch
 
@@ -90,9 +103,31 @@ async def renew_frequents():
                     "role_id":  event.get("role_id")
                 }
 
-                bot.dispatch("quick_creation", guild.get("_id"), 0, event.get("name"), dates, date_sample.get("starts"), date_sample.get("duration"), ev_data, admin=True)
+                bot.dispatch(
+                    "quick_creation",
+                    guild.get("_id"),
+                    0,
+                    event.get("name"),
+                    dates,
+                    date_sample.get("starts"),
+                    date_sample.get("duration"),
+                    ev_data,
+                    None,
+                    True
+                )
             else:
-                bot.dispatch("ext_event_q_creation", guild.get("_id"), 0, event.get("name"), dates, date_sample.get("starts"), date_sample.get("duration"), admin=True)
+                bot.dispatch(
+                    "ext_event_q_creation",
+                    guild.get("_id"),
+                    0,
+                    event.get("name"),
+                    dates,
+                    date_sample.get("starts"),
+                    date_sample.get("duration"),
+                    None,
+                    None,
+                    True
+                )
 
 
 async def issue_updates():
@@ -111,7 +146,7 @@ async def perform_cleanup(cleanup_func: Optional[Callable] = None):
         time_to_next = ((month_len[1] - c_time.day) * 86400) + (86400 - ((((c_time.hour * 60) + c_time.minute) * 60) + c_time.second))
         print(c_time)
         print(f"{time_to_next} seconds til next execution")
-        await asyncio.sleep(time_to_next)
+        await asyncio.sleep(10)
         if cleanup_func is not None:
             await renew_frequents()
             await cleanup_func()
