@@ -138,10 +138,15 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
            guild = guild.id
 
         success = await self.db.quick_create(guild, u_id, event_name, dates, starts, duration, int_events_id, admin)
-        if success and interaction is not None:
-            await self.update_calendar(guild, interaction)
-        else:
+
+
+        if success:
+            if interaction:
+                await self.update_calendar(guild, interaction)
+        elif interaction:
             await interaction.followup.send("Something went wrong while processing this request")
+        else:
+            raise Exception("Quick creation failed")
 
 
     @commands.Cog.listener()

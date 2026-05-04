@@ -174,6 +174,10 @@ class Database(commands.Cog):
                         "$push": {
                             f"event_days.{event_name}": {
                                 "date": d,
+                                "timezone": {
+                                    "tz_name": str(d.tzinfo),
+                                    "tz_offset": int(d.utcoffset().total_seconds() / 60)
+                                },
                                 "starts": starts_at,
                                 "duration": duration,
                                 "internal_id": internal_id_list[i] if internal_id_list and len(internal_id_list) > i else None

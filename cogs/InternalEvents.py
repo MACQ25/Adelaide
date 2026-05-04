@@ -40,9 +40,9 @@ async def role_deletion(interaction: discord.Interaction, role_id: int):
 async def scheduled_events(ev_name: str, ev_description: str, dates: list, duration:int|list, guild: discord.Guild, channel: discord.VoiceChannel):
     id_list = []
 
-    for ind, date in enumerate(dates):
+    now = dt.datetime.now().replace(tzinfo=dates[0].tzinfo)
 
-        now = dt.datetime.now().replace(tzinfo=dt.timezone.utc)
+    for ind, date in enumerate(dates):
         if date > now:
 
             end_time = date + dt.timedelta(hours=int(duration[ind] if isinstance(duration, list) else duration))
@@ -139,21 +139,27 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
         if event_data is None and interaction:
             await interaction.followup.send(content="Event has not been set up for this command :c", ephemeral=True)
-        elif event_data and event_data.get("vc_id"):
-            c_channel = interaction.guild.get_channel(event_data.get("vc_id"))
+
+        if event_data.get("vc_id"):
+            c_channel = guild.get_channel(event_data.get("vc_id"))
             internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, guild, c_channel)
-            interaction.client.dispatch(
+
+            dispatcher = interaction.client if interaction else self.bot
+            u_id = interaction.user.id if interaction else -1
+
+            dispatcher.dispatch(
                 "ext_event_q_creation",
-                guild=guild,
-                u_id=-1,
-                event_name=event_name,
-                dates=dates,
-                starts=starts,
-                duration=duration,
-                int_events_id=internal_id,
-                interaction=interaction,
-                admin=admin
+                guild,
+                u_id,
+                event_name,
+                dates,
+                starts,
+                duration,
+                internal_id,
+                interaction,
+                admin
             )
+
 
 
     @commands.Cog.listener()
