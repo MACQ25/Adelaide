@@ -551,6 +551,20 @@ class EventSettings(ui.LayoutView):
         # Then delete the settings panel
         self.stop()
 
+        if int(self.data.frequency) == 3:
+            self.data.dates = [self.data.dates[0]]
+        elif int(self.data.frequency) == 2:
+            starting_from = self.data.dates[0]
+
+            # Adding a +1 hoping no bugs to arise when it comes to February
+            new_batch = list([starting_from])
+            for x in range(5):
+                n_date = starting_from + dt.timedelta(weeks=x + 1)
+                if n_date.month == starting_from.month:
+                    new_batch.append(n_date)
+
+            self.data.dates = new_batch
+
         if self.data.custom_modified:
             self.data.color = [self.data.custom_set_1, self.data.custom_set_2, self.data.custom_gradient]
 

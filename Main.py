@@ -64,15 +64,18 @@ async def renew_frequents():
         for event in guild.get("event_data"):
 
             date_sample = event.get("date_samp")
-            starting_from = dt.datetime.fromisoformat(date_sample.get("date"))
+            starting_from: dt.datetime = date_sample.get("date")
 
             if event.get("frequency") == 2:
+                wd = starting_from.weekday()
+
                 new_batch = list()
                 for x in range(5):
                     n_date = starting_from + dt.timedelta(weeks=x + 1)
                     if n_date.month == starting_from.month + 1:
                         new_batch.append(n_date)
                 dates = new_batch
+
             else:
                 dates = [starting_from + dt.timedelta(days=28)]
 
@@ -87,9 +90,9 @@ async def renew_frequents():
                     "role_id":  event.get("role_id")
                 }
 
-                bot.dispatch("quick_creation", guild.get("_id"), 0, event.get("name"), dates, date_sample.get("starts"), date_sample.get("duration"), ev_data)
+                bot.dispatch("quick_creation", guild.get("_id"), 0, event.get("name"), dates, date_sample.get("starts"), date_sample.get("duration"), ev_data, admin=True)
             else:
-                bot.dispatch("ext_event_q_creation", guild.get("_id"), 0, event.get("name"), dates, date_sample.get("starts"), date_sample.get("duration"))
+                bot.dispatch("ext_event_q_creation", guild.get("_id"), 0, event.get("name"), dates, date_sample.get("starts"), date_sample.get("duration"), admin=True)
 
 
 async def issue_updates():
@@ -113,6 +116,7 @@ async def perform_cleanup(cleanup_func: Optional[Callable] = None):
             await renew_frequents()
             await cleanup_func()
             asyncio.create_task(issue_updates())
+        await asyncio.sleep(60000)
 
 
 tkn = os.getenv("BOT_TOKEN", open("secrets/token.tkn").readline().strip())

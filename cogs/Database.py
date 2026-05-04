@@ -1,10 +1,11 @@
+import calendar
 import datetime
 import os
-from datetime import datetime as dt, timezone
+from datetime import datetime as dt, timezone, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 from bson import CodecOptions
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateOne
 from pymongo.server_api import ServerApi
 from discord.ext import commands
 from objects.Event import Event
@@ -110,7 +111,10 @@ class Database(commands.Cog):
             new_dates = [
                 {
                     "date": date,
-                    "timezone": date.tzinfo,
+                    "timezone": {
+                        "tz_name": str(date.tzinfo),
+                        "tz_offset": int(date.utcoffset().total_seconds() / 60)
+                    },
                     "starts": date.hour,
                     "duration": event.duration,
                     "internal_id": event.int_evt[ind] if len(event.int_evt) > ind else None
@@ -158,24 +162,29 @@ class Database(commands.Cog):
             if not admin:
                 filter_params.update({f"event_owners.{user_id}": event_name})
 
-            result = db.guilds.update_one(
-                filter = filter_params,
-                update={
-                    '$push': {
-                        f'event_days.{event_name}': {
-                            '$each': [
-                                {
-                                    "date": d,
-                                    "starts": starts_at,
-                                    "duration": duration,
-                                    "internal_id": internal_id_list[i] if internal_id_list and len(internal_id_list) > i else None
-                                }
-                                for i, d in enumerate(dates)
-                            ]
+            ops = [
+                UpdateOne(
+                    filter={
+                        **filter_params,
+                        f"event_days.{event_name}": {
+                            "$not": {"$elemMatch": {"date": d}}
+                        }
+                    },
+                    update={
+                        "$push": {
+                            f"event_days.{event_name}": {
+                                "date": d,
+                                "starts": starts_at,
+                                "duration": duration,
+                                "internal_id": internal_id_list[i] if internal_id_list and len(internal_id_list) > i else None
+                            }
                         }
                     }
-                }
-            )
+                )
+                for i, d in enumerate(dates)
+            ]
+
+            result = db.guilds.bulk_write(ops, ordered=False)
 
             if result.matched_count == 0:
                 print("Operation denied: user does not own this event.")
@@ -208,7 +217,12 @@ class Database(commands.Cog):
                 {"_id": g_id},
                 {"timezone": 1}
             )
-            tz = ZoneInfo(guild_meta.get("timezone", "UTC"))
+            tz_obj = guild_meta.get("timezone", None)
+            tz = ZoneInfo(tz_obj.get("tz_name", "UTC") if tz_obj else "UTC")
+
+            c_date = dt.today().astimezone(tz)
+            lower_date_limit = c_date.replace(day=1, hour=0, second=0)
+            upper_date_limit = lower_date_limit + timedelta(days=calendar.monthrange(c_date.year, c_date.month)[1], hours=0)
 
             codec_opts = CodecOptions(tz_aware=True, tzinfo=tz)
             db_tz = self.client.get_database("scheduling", codec_options=codec_opts)
@@ -221,9 +235,7 @@ class Database(commands.Cog):
                                 "$filter": {
                                     "input": {
                                         "$map": {
-                                            "input": {
-                                                "$objectToArray": "$event_days"
-                                            },
+                                            "input": { "$objectToArray": "$event_days" },
                                             "as": "kp",
                                             "in": {
                                                 "k": "$$kp.k",
@@ -232,9 +244,9 @@ class Database(commands.Cog):
                                                         "input": "$$kp.v",
                                                         "as": "date_obj",
                                                         "cond": {
-                                                            "$gte": [
-                                                                "$$date_obj.date",
-                                                                dt.today().astimezone(tz).replace(day=1, hour=0, second=0)
+                                                            "$and": [
+                                                                { "$gte": ["$$date_obj.date", lower_date_limit] },
+                                                                { "$lt": ["$$date_obj.date", upper_date_limit] },
                                                             ]
                                                         }
                                                     }
@@ -244,12 +256,7 @@ class Database(commands.Cog):
                                     },
                                     "as": "kp",
                                     "cond": {
-                                        "$gt": [
-                                            {
-                                                "$size": "$$kp.v"
-                                            },
-                                            0
-                                        ]
+                                        "$gt": [ { "$size": "$$kp.v" },  0 ]
                                     }
                                 }
                             }
@@ -267,20 +274,12 @@ class Database(commands.Cog):
                                         "as": "event",
                                         "cond": {
                                             "$and": [
+                                                { "$eq": [ "$$event.active", True ] },
                                                 {
-                                                    "$eq": [
-                                                        "$$event.active",
-                                                        True
-                                                    ]
-                                                },
-                                                {
-                                                    "$in": [
-                                                        "$$event.name",
+                                                    "$in": [ "$$event.name",
                                                         {
                                                             "$map": {
-                                                                "input": {
-                                                                    "$objectToArray": "$filtered_days"
-                                                                },
+                                                                "input": { "$objectToArray": "$filtered_days" },
                                                                 "as": "kp",
                                                                 "in": "$$kp.k"
                                                             }
@@ -579,9 +578,10 @@ class Database(commands.Cog):
                                                     "input": "$event_days"
                                                 }
                                             },
-                                            0
+                                            -1
                                         ]
-                                    }
+                                    },
+                                    "guild_tz": "$timezone"
                                 }
                             }
                         }
@@ -804,7 +804,10 @@ class Database(commands.Cog):
                 },
                 update={
                     "$set": {
-                        f"timezone": tmz
+                        f"timezone": {
+                            "tz_name": tmz,
+                            "tz_offset": int(dt.now().astimezone(ZoneInfo(tmz)).utcoffset().total_seconds() / 60)
+                        }
                     }
                 },
                 upsert=True

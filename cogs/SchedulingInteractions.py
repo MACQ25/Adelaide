@@ -88,6 +88,7 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
         timezone="Your current timezone",
         create_channel="For Scheduled Events set up, use existing or create new section?"
     )
+    @app_commands.autocomplete(timezone=AutocompleteMixin.timezone_autocomplete)
     async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, timezone:str="", color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False):
         await defer(interaction)
         if not await self.db.check_if_exists(interaction.id, name):

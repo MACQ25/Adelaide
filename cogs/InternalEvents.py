@@ -130,7 +130,10 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_quick_creation(self, guild:discord.Guild, u_id:int, event_name:str, dates:list, starts:int, duration:int, event_data=None, interaction:discord.Interaction|None=None):
+    async def on_quick_creation(self, guild:discord.Guild|int, u_id:int, event_name:str, dates:list, starts:int, duration:int, event_data=None, interaction:discord.Interaction|None=None, admin:bool=False):
+        if isinstance(guild, int):
+            guild = self.bot.get_guild(guild)
+
         if event_data is None:
             event_data = await self.db.get_internal_data(guild.id, u_id, event_name)
 
@@ -139,7 +142,18 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
         elif event_data and event_data.get("vc_id"):
             c_channel = interaction.guild.get_channel(event_data.get("vc_id"))
             internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, guild, c_channel)
-            interaction.client.dispatch("ext_event_q_creation", interaction, event_name, dates, starts, duration, internal_id, interaction)
+            interaction.client.dispatch(
+                "ext_event_q_creation",
+                guild=guild,
+                u_id=-1,
+                event_name=event_name,
+                dates=dates,
+                starts=starts,
+                duration=duration,
+                int_events_id=internal_id,
+                interaction=interaction,
+                admin=admin
+            )
 
 
     @commands.Cog.listener()

@@ -90,7 +90,7 @@ async def draw(guild_id: int, events: list):
     font_path = os.getenv("FONT_PATH", "arialbd.ttf")
 
     weekdays = ImageFont.truetype(font_path, 32)
-    font = ImageFont.truetype(font_path, 16)
+    font = ImageFont.truetype(font_path, 20)
 
     current_date = dt.today()
     date =int(current_date.strftime('%d'))
@@ -101,7 +101,9 @@ async def draw(guild_id: int, events: list):
 
     long_month = month_len[1] > 30 and (month_len[0] is calendar.FRIDAY or month_len[0] is calendar.SATURDAY)
 
-    w, h = 1420, 1400 if long_month else 1200
+    base_height = 720
+    h = int((base_height * 1.25444) if long_month else base_height)
+    w = int(h * 1.42)
 
 
     img = Image.new("RGBA",(w,h), (255,255,255))
@@ -145,7 +147,7 @@ async def draw(guild_id: int, events: list):
     i = 1
     j = 0
     r = rows[j]
-    x_offset_val = 160
+    x_offset_val = 140
     y_offset_val = 40
     displacement = 20
 
@@ -167,7 +169,7 @@ async def draw(guild_id: int, events: list):
                 i_displace = False
 
             # This calculation is 100% the worst thing ever but its a funny kludge if ever
-            internal_y_offset = r - 15 + (y_offset_val * (n + 1)) + (10 * n) + (ln_displacement - displacement if i_displace else ln_displacement)
+            internal_y_offset = r - 15 + (y_offset_val * (n + 1)) + (5 * n) + (ln_displacement - displacement if i_displace else ln_displacement)
 
             color1 = ImageColor.getrgb(ent[1][0])
             color2 =  ImageColor.getrgb(ent[1][1] if len(ent[1]) > 1 else ent[1][0])

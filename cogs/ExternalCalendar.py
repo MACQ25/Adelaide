@@ -42,7 +42,7 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
     async def update_calendar(self, guild_id: int, interaction:discord.Interaction = None):
         data =  await self.db.get_events(guild_id)
 
-        tmz = data.get("timezone", "UTC")
+        tmz = data.get("timezone", {}).get("tz_name", "UTC")
         upd_time = dt.today().astimezone(ZoneInfo(tmz))
         event_labels = [list() for _ in range(calendar.monthrange(upd_time.year, upd_time.month)[1])]
 
@@ -61,20 +61,29 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
         assigned_id = data.get("assigned_channel")
         if assigned_id != 'n/a':
 
+            bot_id = self.bot.user.id
             a_channel = await self.bot.fetch_channel(assigned_id.get('channel_id'))
             perms = await check_permissions_assigned(self.bot, a_channel)
 
             if all(perms.values()):
-                for ch in self.bot.get_guild(guild_id).text_channels:
+                guild: discord.Guild = self.bot.get_guild(guild_id)
+
+                if guild is None:
+                    return
+
+                channels = await guild.fetch_channels()
+                for ch in channels:
+                    if not isinstance(ch, discord.TextChannel):
+                        continue
                     try:
                         ch_pins = await ch.pins()
                         for msg in ch_pins:
-                            if msg.author.id == self.bot.user.id:
+                            if msg.author.id == bot_id:
                                 await msg.unpin()
                                 await msg.delete()
 
                         async for msg in ch.history(limit=100):
-                            if msg.type == discord.MessageType.pins_add and msg.author.id == self.bot.user.id:
+                            if msg.author.id == bot_id and (msg.type == discord.MessageType.pins_add or msg.embeds):
                                 await msg.delete()
                     except discord.Forbidden:
                         continue  # skip channels the bot can't access
@@ -105,20 +114,6 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
     async def on_ext_event_creation(self, interaction: discord.Interaction, event: Event):
         try:
             # role = await guild.create_role(name=event.summary, color=discord.Color.from_str(event.color))
-
-            if int(event.frequency) == 3:
-                event.dates = [event.dates[0]]
-            elif int(event.frequency) == 2:
-                starting_from = dt.fromisoformat(event.dates[0])
-
-                # Adding a +1 hoping no bugs to arise when it comes to February
-                new_batch = list()
-                for x in range(5):
-                    n_date = starting_from + timedelta(weeks=x + 1)
-                    if n_date.month == starting_from.month:
-                        new_batch.append(n_date)
-
-                event.dates = new_batch
             await self.db.save_event(interaction.guild_id, event)
         except Exception as e:
             print("exception found on listener")
@@ -136,11 +131,15 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_ext_event_q_creation(self, guild:discord.Guild, u_id:int, event_name:str, dates:list, starts:int, duration:int, int_events_id:list|None=None, interaction:discord.Interaction|None=None, admin:bool=False):
+    async def on_ext_event_q_creation(self, guild:discord.Guild|int, u_id:int, event_name:str, dates:list, starts:int, duration:int, int_events_id:list|None=None, interaction:discord.Interaction|None=None, admin:bool=False):
         success: bool
-        success = await self.db.quick_create(guild.id, u_id, event_name, dates, starts, duration, int_events_id, admin)
-        if success:
-            await self.update_calendar(guild.id, interaction)
+
+        if isinstance(guild, discord.Guild):
+           guild = guild.id
+
+        success = await self.db.quick_create(guild, u_id, event_name, dates, starts, duration, int_events_id, admin)
+        if success and interaction is not None:
+            await self.update_calendar(guild, interaction)
         else:
             await interaction.followup.send("Something went wrong while processing this request")
 
