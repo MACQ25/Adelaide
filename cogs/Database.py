@@ -82,7 +82,18 @@ class Database(commands.Cog):
                 "name": event.summary,
                 "desc": event.description,
                 "color": event.color,
-                "frequency": int(event.frequency),
+                "frequency": {
+                    "mode": int(event.frequency),
+                    "sample": {
+                        "date" : event.dates[0],
+                        "timezone": {
+                            "tz_name": str(event.dates[0].tzinfo),
+                            "tz_offset": int(event.dates[0].utcoffset().total_seconds() / 60)
+                        },
+                        "start": event.starts,
+                        "duration": event.duration,
+                    }
+                },
                 "active": True,
             }
 
@@ -307,7 +318,11 @@ class Database(commands.Cog):
                     }
                 }
             ]).next()
-            return res
+
+            if res.get("event_data", None) and res.get("event_days", None):
+                return res
+            else:
+                return None
         except Exception as e:
             print(e)
             raise Exception("Failed to acquire events")
@@ -520,17 +535,6 @@ class Database(commands.Cog):
 
             results = db.guilds.aggregate([
                 {
-                    "$match": {
-                        "event_data": {
-                            "$elemMatch": {
-                                "frequency": {
-                                    "$gte": 2
-                                }
-                            }
-                        }
-                    }
-                },
-                {
                     "$project": {
                         "event_data": {
                             "$map": {
@@ -539,31 +543,9 @@ class Database(commands.Cog):
                                         "input": "$event_data",
                                         "as": "ev",
                                         "cond": {
-                                            "$and": [
-                                                {
-                                                    "$gte": [
-                                                        "$$ev.frequency",
-                                                        2
-                                                    ]
-                                                },
-                                                {
-                                                    "$ne": [
-                                                        {
-                                                            "$size": {
-                                                                "$ifNull": [
-                                                                    {
-                                                                        "$getField": {
-                                                                            "field": "$$ev.name",
-                                                                            "input": "$event_days"
-                                                                        }
-                                                                    },
-                                                                    []
-                                                                ]
-                                                            }
-                                                        },
-                                                        0
-                                                    ]
-                                                }
+                                            "$gte": [
+                                                "$$ev.frequency.mode",
+                                                2
                                             ]
                                         }
                                     }
@@ -571,20 +553,10 @@ class Database(commands.Cog):
                                 "as": "event",
                                 "in": {
                                     "name": "$$event.name",
-                                    "frequency": "$$event.frequency",
+                                    "frequency": "$$event.frequency.mode",
                                     "channel": "$$event.channel",
                                     "desc": "$$event.desc",
-                                    "date_samp": {
-                                        "$arrayElemAt": [
-                                            {
-                                                "$getField": {
-                                                    "field": "$$event.name",
-                                                    "input": "$event_days"
-                                                }
-                                            },
-                                            -1
-                                        ]
-                                    },
+                                    "date_samp": "$$event.frequency.sample",
                                     "guild_tz": "$timezone"
                                 }
                             }
