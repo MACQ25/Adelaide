@@ -396,7 +396,8 @@ class Database(commands.Cog):
                                         "text_id": "$$event.channel.text_id",
                                         "vc_id": "$$event.channel.vc_id",
                                         "desc": "$$event.desc",
-                                        "role_id": "$$event.role_id"
+                                        "role_id": "$$event.role_id",
+                                        "thumbnail": "$$event.thumbnail"
                                     }
                                 }
                             }, 0
@@ -569,6 +570,116 @@ class Database(commands.Cog):
             print(e)
 
 
+    async def update_thumbnail(self, g_id, user_id, event_name, thm_name):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                filter={
+                    "$and": [
+                        {"_id": g_id},
+                        {f"event_owners.{user_id}": {"$elemMatch": {"$eq": event_name}}},
+                    ]
+                },
+                update={
+                    "$set": {
+                        "event_data.$[element].thumbnail": thm_name
+                    }
+                },
+                array_filters=[{ "element.name": { "$eq" : event_name}}]
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event or change would be null")
+                return False
+
+            return True
+
+        except Exception as e:
+            print(e)
+
+
+    async def update_to_inactive(self, g_id, user_id, event_name, val:bool):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                filter={
+                    "$and": [
+                        {"_id": g_id},
+                        {f"event_owners.{user_id}": {"$elemMatch": {"$eq": event_name}}},
+                        {"event_data": {"$elemMatch": {"name": {"$eq": event_name}, "active": {"$ne": val}}}}
+                    ]
+                },
+                update={
+                    "$set": {
+                        "event_data.$[element].active": val
+                    }
+                },
+                array_filters=[{ "element.name": { "$eq" : event_name}}]
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event or change would be null")
+                return False
+
+            return True
+
+        except Exception as e:
+            print(e)
+
+
+    async def update_dates(self, g_id, event_name, dates):
+        try:
+            db = self.client.get_database("scheduling")
+
+            db.guilds.update_one(
+                filter={
+                    "$and": [
+                        {"_id": g_id},
+                        {"event_data": {"$elemMatch": {"name": {"$eq": event_name}}}}
+                    ]
+                },
+                update={
+                    "$set": {
+                        f"event_days.{event_name}": dates
+                    }
+                }
+            )
+
+        except Exception as e:
+            print(e)
+
+
+    async def update_timezone(self, g_id, tmz):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                filter={
+                    "_id": g_id,
+                },
+                update={
+                    "$set": {
+                        f"timezone": {
+                            "tz_name": tmz,
+                            "tz_offset": int(dt.now().astimezone(ZoneInfo(tmz)).utcoffset().total_seconds() / 60)
+                        }
+                    }
+                },
+                upsert=True
+            )
+
+            if result.matched_count == 0:
+                print("Operation denied: user does not own this event.")
+                return False
+
+            return True
+
+        except Exception as e:
+            print(e)
+
+
     async def delete_set(self, g_id, user_id, event_name, list_of_indexes):
         try:
             db = self.client.get_database("scheduling")
@@ -598,7 +709,7 @@ class Database(commands.Cog):
 
             result = db.guilds.update_one(
                 {"_id": g_id, f"event_owners.{user_id}": event_name},
-                      update={"$set": { f"event_days.{event_name}" : [] }}
+                update={"$set": { f"event_days.{event_name}" : [] }}
             )
 
             if result.matched_count == 0:
@@ -618,7 +729,7 @@ class Database(commands.Cog):
                 update= {
                     "$unset":
                         {
-                          f"event_days.{event_name}": ""
+                            f"event_days.{event_name}": ""
                         },
                     "$pull": {
                         "event_data": {"name": event_name},
@@ -744,7 +855,7 @@ class Database(commands.Cog):
                                 "else": {
                                     "$arrayToObject": "$event_days_array"
                                 }
-                              }
+                            }
                         }
                     }
                 },
@@ -759,87 +870,6 @@ class Database(commands.Cog):
                     }
                 }
             ])
-
-        except Exception as e:
-            print(e)
-
-
-    async def update_to_inactive(self, g_id, user_id, event_name, val:bool):
-        try:
-            db = self.client.get_database("scheduling")
-
-            result = db.guilds.update_one(
-                filter={
-                    "$and": [
-                        {"_id": g_id},
-                        {f"event_owners.{user_id}": {"$elemMatch": {"$eq": event_name}}},
-                        {"event_data": {"$elemMatch": {"name": {"$eq": event_name}, "active": {"$ne": val}}}}
-                    ]
-                },
-                update={
-                    "$set": {
-                        "event_data.$[element].active": val
-                    }
-                },
-                array_filters=[{ "element.name": { "$eq" : event_name}}]
-            )
-
-            if result.matched_count == 0:
-                print("Operation denied: user does not own this event or change would be null")
-                return False
-
-            return True
-
-        except Exception as e:
-            print(e)
-
-
-    async def update_dates(self, g_id, event_name, dates):
-        try:
-            db = self.client.get_database("scheduling")
-
-            db.guilds.update_one(
-                filter={
-                    "$and": [
-                        {"_id": g_id},
-                        {"event_data": {"$elemMatch": {"name": {"$eq": event_name}}}}
-                    ]
-                },
-                update={
-                    "$set": {
-                        f"event_days.{event_name}": dates
-                    }
-                }
-            )
-
-        except Exception as e:
-            print(e)
-
-
-    async def update_timezone(self, g_id, tmz):
-        try:
-            db = self.client.get_database("scheduling")
-
-            result = db.guilds.update_one(
-                filter={
-                    "_id": g_id,
-                },
-                update={
-                    "$set": {
-                        f"timezone": {
-                            "tz_name": tmz,
-                            "tz_offset": int(dt.now().astimezone(ZoneInfo(tmz)).utcoffset().total_seconds() / 60)
-                        }
-                    }
-                },
-                upsert=True
-            )
-
-            if result.matched_count == 0:
-                print("Operation denied: user does not own this event.")
-                return False
-
-            return True
 
         except Exception as e:
             print(e)

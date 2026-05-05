@@ -1,4 +1,5 @@
 import datetime as dt
+from dataclasses import MISSING
 
 import discord
 from discord import app_commands
@@ -37,8 +38,13 @@ async def role_deletion(interaction: discord.Interaction, role_id: int):
     await guild.get_role(role_id).delete(reason="Event type is being deleted")
 
 
-async def scheduled_events(ev_name: str, ev_description: str, dates: list, duration:int|list, guild: discord.Guild, channel: discord.VoiceChannel):
+async def scheduled_events(ev_name: str, ev_description: str, dates: list, duration:int|list, guild: discord.Guild, channel: discord.VoiceChannel, thumbnail:str=None):
     id_list = []
+
+    img = None
+    if thumbnail:
+        with open(f"images/event_thumbnail/{thumbnail}", "rb") as f:
+            img = f.read()
 
     now = dt.datetime.now().replace(tzinfo=dates[0].tzinfo)
 
@@ -54,6 +60,7 @@ async def scheduled_events(ev_name: str, ev_description: str, dates: list, durat
                 end_time=end_time,
                 entity_type=discord.EntityType.voice,
                 channel=channel,
+                image=img if img else discord.utils.MISSING,
                 privacy_level=discord.PrivacyLevel.guild_only,
             )
             id_list.append(s_event.id)
@@ -141,7 +148,7 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
         if event_data.get("vc_id"):
             c_channel = guild.get_channel(event_data.get("vc_id"))
-            internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, guild, c_channel)
+            internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, guild, c_channel, event_data.get("thumbnail", None))
 
             dispatcher = interaction.client if interaction else self.bot
             u_id = interaction.user.id if interaction else -1
@@ -188,10 +195,29 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
             await self.bot.get_cog("ExternalCalendar").update_calendar(event.guild_id, None)
 
 
-"""    @app_commands.command(name="Attach Image", description="Add an image to an event you own")
-    @app_commands.autocomplete(name=owned_events_autocomplete)
-    async def add_image(self):
-        pass"""
+    @app_commands.command(name="attach_image", description="Add an image to an event you own")
+    @app_commands.autocomplete(target=owned_events_autocomplete)
+    async def add_image(self, interaction: discord.Interaction, target: str, image: discord.Attachment):
+        # noinspection PyUnresolvedReferences
+        await interaction.response.defer()
+        if not image.content_type or not image.filename.lower().endswith(("png", "jpeg", "jpg")):
+            await interaction.followup.send("What even was that?")
+
+        image_bytes = await image.read()
+
+        file_name = f"{interaction.user.id}_{image.filename}"
+
+        with open(f"images/event_thumbnail/{file_name}", "wb") as f:
+            f.write(image_bytes)
+
+        if await self.db.update_thumbnail(interaction.guild_id, interaction.user.id, target, file_name):
+            internal_ids = await self.db.get_all_internal_id(interaction.guild_id, interaction.user.id, target)
+            t_guild: discord.Guild = self.bot.get_guild(interaction.guild_id)
+            if internal_ids and len(internal_ids) > 0:
+                for i_id in internal_ids:
+                    await t_guild.get_scheduled_event(i_id).edit(image=image_bytes)
+
+        await interaction.followup.send("done")
 
 
 async def setup(bot: commands.Bot):

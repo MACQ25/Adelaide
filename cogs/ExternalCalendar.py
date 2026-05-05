@@ -193,7 +193,7 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
                     days = [d.get("date") for d in scheduled]
                     duration = [d.get("duration") for d in scheduled]
 
-                    n_id = await scheduled_events(event_name, event_data.get("desc"), days, duration, interaction.guild, c_channel)
+                    n_id = await scheduled_events(event_name, event_data.get("desc"), days, duration, interaction.guild, c_channel, event_data.get("thumbnail", None))
 
                     if len([r for r in n_id if r > 0]) > 0:
                         for ind, ev in enumerate(scheduled):
