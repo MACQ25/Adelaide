@@ -655,6 +655,52 @@ class Database(commands.Cog):
             print(e)
 
 
+    async def delete_via_manual(self, g_id, int_id):
+        try:
+            db = self.client.get_database("scheduling")
+
+            pipeline = [
+                { "$match": { "_id": g_id } },
+                { "$project": {
+                    "target": {
+                        "$getField": {
+                            "field": "k",
+                            "input": {
+                                "$first": {
+                                    "$filter": {
+                                        "input": { "$objectToArray": "$event_days" },
+                                        "as": "ev",
+                                        "cond": { "$in": [int_id, "$$ev.v.internal_id"] }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }}
+            ]
+
+            search = next(db.guilds.aggregate(pipeline), None)
+
+            if not search or not search.get("target"):
+                return False
+
+            result = db.guilds.update_one(
+                filter={ "_id": g_id },
+                update={
+                    "$pull": {
+                        f"event_days.{search['target']}" : { "internal_id": int_id }
+                    }
+                }
+            )
+
+            if result.matched_count == 0:
+                raise Exception("No event with such Id found")
+
+            return True
+        except Exception as e:
+            print(e)
+
+
     async def clean_old(self):
         try:
             db = self.client.get_database("scheduling")

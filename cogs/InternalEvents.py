@@ -128,7 +128,6 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
                    await channel.send(f"{event.url}")
 
 
-
     @commands.Cog.listener()
     async def on_quick_creation(self, guild:discord.Guild|int, u_id:int, event_name:str, dates:list, starts:int, duration:int, event_data=None, interaction:discord.Interaction|None=None, admin:bool=False):
         if isinstance(guild, int):
@@ -161,7 +160,6 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
             )
 
 
-
     @commands.Cog.listener()
     async def on_remove_channels(self, interaction: discord.Interaction, event_data: dict):
         guild = interaction.guild
@@ -181,6 +179,13 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
         guild = interaction.guild
         for se in scheduled_list:
             await guild.get_scheduled_event(se).delete()
+
+
+    @commands.Cog.listener()
+    async def on_scheduled_event_delete(self, event):
+        success = await self.db.delete_via_manual(event.guild_id, event.id)
+        if success:
+            await self.bot.get_cog("ExternalCalendar").update_calendar(event.guild_id, None)
 
 
 """    @app_commands.command(name="Attach Image", description="Add an image to an event you own")
