@@ -190,10 +190,19 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
     @commands.Cog.listener()
     async def on_scheduled_event_delete(self, event):
-        print("I was here")
         success = await self.db.delete_via_manual(event.guild_id, event.id)
         if success:
             await self.bot.get_cog("ExternalCalendar").update_calendar(event.guild_id, None)
+
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel):
+        await self.db.delete_assigned_adv(channel.guild.id, channel)
+
+
+    @commands.Cog.listener()
+    async def on_guild_role_delete(self, role: discord.Role):
+        await self.db.delete_assigned_adv(role.guild.id, role)
 
 
     @app_commands.command(name="attach_image", description="Add an image to an event you own")

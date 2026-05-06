@@ -185,8 +185,8 @@ async def draw(guild_id: int, events: list):
                 conv.reverse()
                 upper = ""
 
-                while len(upper) <= 16:
-                    if len(upper) + len(conv[-1]) < 17:
+                while len(upper) <= 14:
+                    if len(upper) + len(conv[-1]) < 15:
                         upper += conv.pop() + " "
                     else: break
 

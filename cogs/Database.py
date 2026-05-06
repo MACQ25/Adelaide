@@ -4,7 +4,10 @@ import os
 from datetime import datetime as dt, timezone, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
+
+import discord
 from bson import CodecOptions
+from discord import VoiceChannel, TextChannel, SectionComponent, CategoryChannel, RoleTags
 from pymongo import MongoClient, UpdateOne
 from pymongo.server_api import ServerApi
 from discord.ext import commands
@@ -722,6 +725,34 @@ class Database(commands.Cog):
     async def delete_full(self, g_id, user_id, event_name):
         try:
             db = self.client.get_database("scheduling")
+
+            associated_img = db.guilds.aggregate([
+                {"$match": {"_id": g_id } },
+                {
+                    "$project": {
+                        "file": {
+                            "$getField": {
+                                "field": "thumbnail",
+                                "input": {
+                                    "$first": {
+                                        "$filter": {
+                                            "input": "$event_data",
+                                            "as": "data",
+                                            "cond": {
+                                                "$eq": [
+                                                    "$$data.name",
+                                                    event_name
+                                                ]
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]).next()
+
             result = db.guilds.update_one(
                 {"_id": g_id, f"event_owners.{user_id}": event_name},
                 update= {
@@ -739,17 +770,29 @@ class Database(commands.Cog):
             if result.matched_count == 0:
                 print("Operation denied: user does not own this event.")
                 return False
+
+            t_file = associated_img.get("file", None)
+            if t_file:
+                if os.path.exists(f"images/event_thumbnail/{t_file}"):
+                    os.remove(f"images/event_thumbnail/{t_file}")
+
             return True
 
         except Exception as e:
             print(e)
 
 
-    async def delete_internal_id(self, g_id, user_id, event_name):
+    async def delete_internal_id(self, g_id, user_id, event_name, admin:bool=False):
         try:
             db = self.client.get_database("scheduling")
+
+            filters = { "_id": g_id }
+
+            if not admin:
+                filters.update({f"event_owners.{user_id}": event_name})
+
             result = db.guilds.update_one(
-                {"_id": g_id, f"event_owners.{user_id}": event_name},
+                filter=filters,
                 update= {
                     "$unset": {f"event_days.{event_name}.$[].internal_id": None}
                 }
@@ -829,6 +872,86 @@ class Database(commands.Cog):
                 raise Exception("No event with such Id found")
 
             return True
+        except Exception as e:
+            print(e)
+
+
+    async def clean_deleted_vc(self, g_id, c_id):
+        try:
+            db = self.client.get_database("scheduling")
+
+            res = db.guilds.aggregate([
+                { "$match": { "_id": g_id } },
+                { "$project": {
+                    "targets": {
+                        "$map": {
+                            "input": {
+                                "$filter": {
+                                    "input": "$event_data",
+                                    "as": "d",
+                                    "cond": { "$eq": [ "$$d.channel.vc_id", c_id ] }
+                                }
+                            },
+                            "as": "events",
+                            "in": { "name": "$$events.name"  }
+                        }
+                    }
+                }}
+            ]).next()
+
+            for ev in res.get("targets"):
+                await self.delete_internal_id(g_id, -1, ev.get("name"), True)
+
+        except Exception as e:
+            print(e)
+
+
+    async def delete_assigned_adv(self, g_id, obj: VoiceChannel | TextChannel | CategoryChannel | discord.Role):
+        try:
+            db = self.client.get_database("scheduling")
+
+            key = {
+                discord.VoiceChannel: "channel.vc_id",
+                discord.TextChannel: "channel.text_id",
+                discord.CategoryChannel: "channel.section_id",
+                discord.Role: "role_id"
+            }
+
+            field = key.get(type(obj))
+            if field is None:
+                raise ValueError(f"Unsupported type: {obj}")
+
+            targets = {
+                f"event_data.$[element].{field}": ""
+            }
+
+            if isinstance(obj, VoiceChannel):
+                targets.update( { f"event_data.$[element].event_owns_it": "" } )
+                await self.clean_deleted_vc(g_id, obj.id)
+
+
+            db.guilds.update_one(
+                    filter={ "_id": g_id },
+                    update={
+                        "$unset": targets
+                    },
+                    array_filters=[{ f"element.{field}": { "$eq" : obj.id}}]
+            )
+
+            db.guilds.update_one(
+                filter={
+                    "_id": g_id,
+                },
+                update={
+                    "$unset": { "event_data.$[element].channel" : "" }
+                },
+                array_filters=[{
+                    "element.channel.vc_id": None,
+                    "element.channel.text_id": None,
+                    "element.channel.section_id": None,
+                }]
+            )
+
         except Exception as e:
             print(e)
 
