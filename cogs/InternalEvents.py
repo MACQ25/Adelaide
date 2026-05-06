@@ -190,6 +190,7 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
     @commands.Cog.listener()
     async def on_scheduled_event_delete(self, event):
+        print("I was here")
         success = await self.db.delete_via_manual(event.guild_id, event.id)
         if success:
             await self.bot.get_cog("ExternalCalendar").update_calendar(event.guild_id, None)

@@ -319,10 +319,8 @@ class Database(commands.Cog):
                 }
             ]).next()
 
-            if res.get("event_data", None) and res.get("event_days", None):
-                return res
-            else:
-                return None
+            return res
+
         except Exception as e:
             print(e)
             raise Exception("Failed to acquire events")
@@ -781,14 +779,37 @@ class Database(commands.Cog):
                                     "$filter": {
                                         "input": { "$objectToArray": "$event_days" },
                                         "as": "ev",
-                                        "cond": { "$in": [int_id, "$$ev.v.internal_id"] }
+                                        "cond": {
+                                            "$and": [
+                                                { "$eq":
+                                                    [
+                                                        {
+                                                            "$getField": {
+                                                                "field": "active",
+                                                                "input": {
+                                                                    "$first": {
+                                                                        "$filter": {
+                                                                            "input": "$event_data",
+                                                                            "as": "data",
+                                                                            "cond": { "$eq": [ "$$data.name", "$$ev.k" ] }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        True
+                                                    ]
+                                                },
+                                                { "$in": [ int_id, "$$ev.v.internal_id" ] }
+                                            ]
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }}
-            ]
+                }
+                }]
 
             search = next(db.guilds.aggregate(pipeline), None)
 

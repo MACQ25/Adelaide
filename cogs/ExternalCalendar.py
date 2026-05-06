@@ -42,12 +42,14 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
     async def update_calendar(self, guild_id: int, interaction:discord.Interaction = None):
         data =  await self.db.get_events(guild_id)
 
-        if data:
-            tmz = data.get("timezone", {}).get("tz_name", "UTC")
-            upd_time = dt.today().astimezone(ZoneInfo(tmz))
-            event_labels = [list() for _ in range(calendar.monthrange(upd_time.year, upd_time.month)[1])]
+        tmz = data.get("timezone", {}).get("tz_name", "UTC")
+        upd_time = dt.today().astimezone(ZoneInfo(tmz))
+        event_labels = [list() for _ in range(calendar.monthrange(upd_time.year, upd_time.month)[1])]
 
-            colors = {e["name"]: e["color"] for e in data.get("event_data", [])}
+        events = data.get("event_data", [])
+
+        if events:
+            colors = {e["name"]: e["color"] for e in events}
 
             for pair in data.get("event_days").items():
                 if pair[0] not in colors:
@@ -57,61 +59,62 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
                     l_date: datetime = ev.get('date')
                     event_labels[l_date.day - 1].append([pair[0], colors[pair[0]]])
 
-            img = await draw(guild_id=guild_id, events=event_labels)
+        img = await draw(guild_id=guild_id, events=event_labels)
 
-            assigned_id = data.get("assigned_channel")
-            if assigned_id != 'n/a':
+        assigned_id = data.get("assigned_channel")
+        if assigned_id != 'n/a':
 
-                bot_id = self.bot.user.id
-                a_channel = await self.bot.fetch_channel(assigned_id.get('channel_id'))
-                perms = await check_permissions_assigned(self.bot, a_channel)
+            bot_id = self.bot.user.id
+            a_channel = await self.bot.fetch_channel(assigned_id.get('channel_id'))
+            perms = await check_permissions_assigned(self.bot, a_channel)
 
-                if all(perms.values()):
-                    guild: discord.Guild = self.bot.get_guild(guild_id)
+            if all(perms.values()):
+                guild: discord.Guild = self.bot.get_guild(guild_id)
 
-                    if guild is None:
-                        return
+                if guild is None:
+                    return
 
-                    channels = await guild.fetch_channels()
-                    for ch in channels:
-                        if not isinstance(ch, discord.TextChannel):
-                            continue
-                        try:
-                            ch_pins = await ch.pins()
-                            for msg in ch_pins:
-                                if msg.author.id == bot_id:
-                                    await msg.unpin()
-                                    await msg.delete()
+                channels = await guild.fetch_channels()
+                for ch in channels:
+                    if not isinstance(ch, discord.TextChannel):
+                        continue
+                    try:
+                        ch_pins = await ch.pins()
+                        for msg in ch_pins:
+                            if msg.author.id == bot_id:
+                                await msg.unpin()
+                                await msg.delete()
 
-                            async for msg in ch.history(limit=100):
-                                if msg.author.id == bot_id and (msg.type == discord.MessageType.pins_add or msg.embeds):
-                                    await msg.delete()
-                        except discord.Forbidden:
-                            continue  # skip channels the bot can't access
-                        except discord.NotFound:
-                            continue
+                        async for msg in ch.history(limit=100):
+                            if msg.author.id == bot_id and (msg.type == discord.MessageType.pins_add or msg.embeds):
+                                await msg.delete()
+                    except discord.Forbidden:
+                        continue  # skip channels the bot can't access
+                    except discord.NotFound:
+                        continue
 
 
-                    file = discord.File(img, filename="Calendar.jpeg")
-                    embed = discord.Embed(title=f"📅 {upd_time.strftime("%B")} Calendar", color=discord.Color.blue())
-                    embed.set_image(url="attachment://Calendar.jpeg")
-                    embed.description = "Scheduled Events: " + ", ".join(f"<@&{r.get('role_id')}>" for r in data.get("event_data", []) if 'role_id' in r)
-                    embed.set_footer(text=f"Last updated: {upd_time.strftime('%Y-%m-%d %H:%M')}, {tmz}")
+                file = discord.File(img, filename="Calendar.jpeg")
+                embed = discord.Embed(title=f"📅 {upd_time.strftime("%B")} Calendar", color=discord.Color.blue())
+                embed.set_image(url="attachment://Calendar.jpeg")
+                embed.description = (
+                        ("Scheduled Events: " + ", ".join(f"<@&{r.get('role_id')}>" for r in data.get("event_data", []) if 'role_id' in r))
+                    if events else "There are no scheduled events on record Y.Y"
+                )
+                embed.set_footer(text=f"Last updated: {upd_time.strftime('%Y-%m-%d %H:%M')}, {tmz}")
 
-                    msg = await a_channel.send(embed=embed, file=file)
-                    await msg.pin()
+                msg = await a_channel.send(embed=embed, file=file)
+                await msg.pin()
 
-                    if interaction is not None:
-                        await interaction.followup.send("updated on assigned channel!", ephemeral=True)
-                else:
-                    if interaction is not None:
-                        await interaction.followup.send(content=lacks_perms_msg(self.bot, a_channel, perms), file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
+                if interaction is not None:
+                    await interaction.followup.send("updated on assigned channel!", ephemeral=True)
             else:
                 if interaction is not None:
-                    await interaction.followup.send(file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
+                    await interaction.followup.send(content=lacks_perms_msg(self.bot, a_channel, perms), file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
         else:
-            if interaction:
-                await interaction.followup.send(content="There is no data assigned to this server!")
+            if interaction is not None:
+                await interaction.followup.send(file=discord.File(img, "Calendar.jpeg"), ephemeral=True)
+
 
 
     @commands.Cog.listener()
@@ -190,7 +193,7 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
                 if event_data and event_data.get("vc_id"):
 
                     c_channel = interaction.guild.get_channel(event_data.get("vc_id"))
-                    days = [d.get("date") for d in scheduled]
+                    days = [d.get("date").astimezone(ZoneInfo(d.get("timezone", {}).get("tz_name", "UTC"))) for d in scheduled]
                     duration = [d.get("duration") for d in scheduled]
 
                     n_id = await scheduled_events(event_name, event_data.get("desc"), days, duration, interaction.guild, c_channel, event_data.get("thumbnail", None))
