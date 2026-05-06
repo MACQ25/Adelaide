@@ -343,6 +343,17 @@ class AdvCreationModal(ui.Modal, title="New Zone for "):
         self.values = view.data
         self.title = f'{self.title}{self.values.summary if len(self.values.summary) < 33 else f"{self.values.summary[:29]}..."}' if self.values.summary is not None else "The event is still unnamed tho..."
 
+        self.permissions = ui.Label(
+            text="Select this section's visibility",
+            component=ui.Select(
+                max_values=1,
+                options=[
+                    discord.SelectOption(label="Public", value="False", default=True),
+                    discord.SelectOption(label="Private", value="True")
+                ]
+            )
+        )
+
         self.sectionInput = ui.TextInput(
             label="Name of the new section",
             default=f'{self.values.summary}',
@@ -363,6 +374,7 @@ class AdvCreationModal(ui.Modal, title="New Zone for "):
             required=True
         )
 
+        self.add_item(self.permissions)
         self.add_item(self.sectionInput)
         self.add_item(self.channelInput)
         self.add_item(self.vcInput)
@@ -373,6 +385,7 @@ class AdvCreationModal(ui.Modal, title="New Zone for "):
             self.view.data.section = self.sectionInput.value
             self.view.data.text_channel = self.channelInput.value
             self.view.data.voice_channel = self.vcInput.value
+            self.view.data.is_private = bool(self.permissions.component.values[0])
 
             self.view.finish_button.disabled = not self.view.is_valid
             await interaction.response.edit_message(view=self.view)

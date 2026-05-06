@@ -53,6 +53,7 @@ class Event:
         self.text_channel = None
         self.voice_channel = None
         self.created_for_event = None
+        self.is_private = False
 
         self.role = None
         self.members: List[Union[discord.Member, discord.User]] = []

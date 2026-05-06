@@ -158,15 +158,17 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
 
     @commands.Cog.listener()
     async def on_ext_event_cancellation(self, interaction: discord.Interaction, event_name:str, targets:list, all_flag:bool):
-        success: bool
+        success: bool = False
         internals = None
 
         if all_flag:
             internals = await self.db.get_all_internal_id(interaction.guild_id, interaction.user.id, event_name)
             success = await self.db.delete_by_class(interaction.guild_id, interaction.user.id, event_name)
-        else:
+        elif len(targets) > 0:
             internals = await self.db.get_date_internals(interaction.guild_id, event_name, targets)
             success = await self.db.delete_set(interaction.guild_id, interaction.user.id, event_name, targets)
+        else:
+            await interaction.followup.send("How did we get here?")
 
         if success:
             if internals and len(internals) > 0:

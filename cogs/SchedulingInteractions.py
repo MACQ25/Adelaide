@@ -139,7 +139,10 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     @app_commands.autocomplete( name=AutocompleteMixin.owned_events_autocomplete, dates=AutocompleteMixin.event_dates_autocomplete )
     async def delete(self, interaction: discord.Interaction, name:str, dates:str="", all:bool=False):
         await defer(interaction)
-        interaction.client.dispatch("ext_event_cancellation", interaction, name, dates.split(","), all)
+        if len(dates) == 0 and not all:
+            interaction.followup.send("No dates were given, nor was it requested to delete everything")
+        else:
+            interaction.client.dispatch("ext_event_cancellation", interaction, name, dates.split(","), all)
 
 
     @app_commands.command(name="hiatus", description="Drops all forthcoming dates for the entered event and sets it as inactive")

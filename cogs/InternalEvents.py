@@ -86,14 +86,32 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
     async def on_event_channel_creation(self, interaction: discord.Interaction, event: Event):
         section = None
         guild = interaction.guild
+
         f_category = discord.utils.get(interaction.guild.categories, name=event.section)
+
+        overwrites = discord.utils.MISSING
+
+        if event.is_private:
+            master_perms = discord.PermissionOverwrite(view_channel=True, manage_threads=True, manage_messages=True, manage_channels=True)
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                interaction.user: master_perms,
+                guild.me: master_perms
+            }
+
         if f_category is None:
-            section = await guild.create_category(event.section)
-            text_channel = await guild.create_text_channel(event.text_channel, category=section)
-            voice_channel = await guild.create_voice_channel(event.voice_channel, category=section)
+            section = await guild.create_category(event.section, overwrites=overwrites)
+            text_channel = await guild.create_text_channel(event.text_channel, category=section, overwrites=overwrites)
+            voice_channel = await guild.create_voice_channel(event.voice_channel, category=section, overwrites=overwrites)
         else:
-            text_channel = await guild.create_text_channel(event.text_channel, category=f_category)
-            voice_channel = await guild.create_voice_channel(event.voice_channel, category=f_category)
+            perms = f_category.permissions_for(interaction.user)
+            if not perms.view_channel:
+                await interaction.followup.send(
+                    "You don't have permission to create channels in that section.", ephemeral=True
+                )
+                return
+            text_channel = await guild.create_text_channel(event.text_channel, category=f_category, overwrites=overwrites)
+            voice_channel = await guild.create_voice_channel(event.voice_channel, category=f_category, overwrites=overwrites)
 
         event.section = f_category.id if f_category else section.id
         event.text_channel = text_channel.id
@@ -112,6 +130,14 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
             event.int_evt = await scheduled_events(event.summary, event.description, event.dates, event.duration, guild, c_channel)
 
             event.role = await role_creation(interaction, event)
+
+            role = guild.get_role(event.role)
+
+            if event.is_private and event.created_for_event:
+                await guild.get_channel(event.section).set_permissions(role, view_channel=True)
+                await guild.get_channel(event.text_channel).set_permissions(role, view_channel=True)
+                await c_channel.set_permissions(role, view_channel=True)
+
             interaction.client.dispatch("ext_event_creation", interaction, event)
 
         except Exception as e:
@@ -122,11 +148,16 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
     async def on_notify_invitations(self, interaction: discord.Interaction, role_id: int, channel_id: int, mentions: list, internal_id: list = None):
         guild = interaction.guild
         assert all(isinstance(m, discord.Member) for m in mentions)
-        cleaned_mentions = (", ".join(f"<@{user.id}>" for user in mentions if user.id is not interaction.user.id))
 
         channel = guild.get_channel(channel_id)
 
-        await channel.send(content=f"Welcome! this is the official channel of <@&{role_id}>\n <@{interaction.user.id}> has invited you to join\n" + cleaned_mentions)
+        flag = channel.overwrites_for(guild.default_role).view_channel or channel.category.overwrites_for(guild.default_role).view_channel
+
+        if flag:
+            cleaned_mentions = (", ".join(f"<@{user.id}>" for user in mentions if user.id is not interaction.user.id))
+            await channel.send(content=f"Welcome! this is the official channel of <@&{role_id}>\n <@{interaction.user.id}> has invited you to join\n" + cleaned_mentions)
+        else:
+            await channel.send(content=f"Welcome! this is the official channel of <@&{role_id}>\n created by: <@{interaction.user.id}>\n currently waiting for people to join :p")
 
         if internal_id:
            if internal_id[0] > 0:
