@@ -110,6 +110,12 @@ class Database(commands.Cog):
                     "event_owns_it": event.created_for_event
                 }
                 data.update({"channel" : channel_data})
+                data.update({"is_private": event.is_private})
+
+            if len(event.members) > 0:
+                members = [m.id for m in event.members]
+                members.append(event.owner)
+                data.update({"members": members})
 
             if event.role is not None:
                 data.update({"role_id": event.role})
@@ -407,6 +413,7 @@ class Database(commands.Cog):
                                         "vc_id": "$$event.channel.vc_id",
                                         "desc": "$$event.desc",
                                         "role_id": "$$event.role_id",
+                                        "is_private": "$$event.is_private",
                                         "thumbnail": "$$event.thumbnail"
                                     }
                                 }
@@ -568,6 +575,7 @@ class Database(commands.Cog):
                                     "channel": "$$event.channel",
                                     "desc": "$$event.desc",
                                     "date_samp": "$$event.frequency.sample",
+                                    "is_private": "$$event.is_private",
                                     "thumbnail": "$$event.thumbnail",
                                     "guild_tz": "$timezone"
                                 }

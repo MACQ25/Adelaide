@@ -104,7 +104,8 @@ async def renew_frequents():
                     "text_id": event.get("channel").get("text_id"),
                     "vc_id": event.get("channel").get("vc_id"),
                     "desc": event.get("desc"),
-                    "role_id":  event.get("role_id")
+                    "role_id":  event.get("role_id"),
+                    "is_private": event.get("is_private", False)
                 }
 
                 bot.dispatch(

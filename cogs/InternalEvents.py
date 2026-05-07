@@ -1,4 +1,5 @@
 import datetime as dt
+import uuid
 from dataclasses import MISSING
 
 import discord
@@ -16,7 +17,7 @@ async def process_image(image: discord.Attachment, interaction: discord.Interact
         raise ValueError("Invalid image attachment")
 
     image_bytes = await image.read()
-    file_name = f"{interaction.user.id}_{image.filename}"
+    file_name = f"{interaction.user.id}_{uuid.uuid4()}.{image.filename.split(".")[1]}"
 
     return file_name, image_bytes
 
@@ -74,7 +75,6 @@ async def scheduled_events(ev_data: Event, guild: discord.Guild, channel: discor
 
             s_event = await guild.create_scheduled_event(
                 name=ev_data.name,
-                description=ev_data.description,
                 start_time=date,
                 end_time=end_time,
                 entity_type=discord.EntityType.voice,
