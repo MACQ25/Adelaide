@@ -131,7 +131,7 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
                     "notify_invitations",
                     interaction,
                     event.role,
-                    event.text_channel if event.created_for_event else event.channel.id,
+                    event.text_channel or event.voice_channel,
                     event.members,
                     event.int_evt
                 )
@@ -215,13 +215,13 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
         date_id = await self.db.get_all_internal_id(interaction.guild_id, interaction.user.id, event_name)
 
         if event_data:
-            if date_id and len(date_id) > 0:
-                interaction.client.dispatch("remove_scheduled", interaction, date_id)
 
             await role_deletion(interaction, event_data.get("role_id"))
 
             if event_data.get("event_owns_it"):
                 interaction.client.dispatch("remove_channels", interaction, event_data)
+            elif date_id and len(date_id) > 0:
+                interaction.client.dispatch("remove_scheduled", interaction, date_id)
 
         ext_success = await self.db.delete_full(interaction.guild_id, interaction.user.id, event_name)
         if ext_success:

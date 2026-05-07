@@ -125,11 +125,12 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
         try:
             guild = interaction.guild
 
-            c_channel = guild.get_channel(event.voice_channel) if event.created_for_event else event.channel
+            c_channel = guild.get_channel(event.voice_channel)
 
             event.int_evt = await scheduled_events(event.summary, event.description, event.dates, event.duration, guild, c_channel)
 
-            event.role = await role_creation(interaction, event)
+            if event.role is None:
+                event.role = await role_creation(interaction, event)
 
             role = guild.get_role(event.role)
 
@@ -153,7 +154,7 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
         flag = channel.overwrites_for(guild.default_role).view_channel or channel.category.overwrites_for(guild.default_role).view_channel
 
-        if flag:
+        if flag is None:
             cleaned_mentions = (", ".join(f"<@{user.id}>" for user in mentions if user.id is not interaction.user.id))
             await channel.send(content=f"Welcome! this is the official channel of <@&{role_id}>\n <@{interaction.user.id}> has invited you to join\n" + cleaned_mentions)
         else:
@@ -258,7 +259,7 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
                 for i_id in internal_ids:
                     await t_guild.get_scheduled_event(i_id).edit(image=image_bytes)
 
-        await interaction.followup.send("done")
+        await interaction.followup.send("done", Ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

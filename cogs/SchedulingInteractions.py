@@ -55,10 +55,11 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
                     colour=[color.value] if color is not None else [None],
                     mode=str(mode),
                     dates=dates,
-                    starts=19,
-                    duration=4
+                    starts=12,
+                    duration=1
                 )
                 view = EventSettings(interaction.user, event)
+                await view.build()
                 await interaction.followup.send(view=view, ephemeral=True)
             except TypeError:
                 await interaction.followup.send(content="User didn't enter a number in one of the dates", ephemeral=True)
@@ -89,7 +90,7 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
         create_channel="For Scheduled Events set up, use existing or create new section?"
     )
     @app_commands.autocomplete(timezone=AutocompleteMixin.timezone_autocomplete)
-    async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, timezone:str="", color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False):
+    async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, timezone:str="", color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False, image: discord.Attachment=None):
         await defer(interaction)
         if not await self.db.check_if_exists(interaction.id, name):
             try:
@@ -105,6 +106,7 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
                     timezone=timezone
                 )
                 view = EventSettings(interaction.user, event, True, create_channel)
+                await view.build()
                 await interaction.followup.send(view=view, ephemeral=True)
             except TypeError:
                 await interaction.followup.send(content="User didn't enter a number in one of the dates", ephemeral=True)

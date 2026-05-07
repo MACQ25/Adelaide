@@ -100,11 +100,11 @@ class Database(commands.Cog):
                 "active": True,
             }
 
-            if event.channel or event.check_adv_present():
+            if event.check_adv_present():
                 channel_data = {
                     "section_id": event.section if event.section else None,
                     "text_id": event.text_channel if event.text_channel else None,
-                    "vc_id": event.channel.id if event.channel else event.voice_channel,
+                    "vc_id":  event.voice_channel if event.voice_channel else None,
                     "event_owns_it": event.created_for_event
                 }
                 data.update({"channel" : channel_data})

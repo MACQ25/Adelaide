@@ -48,7 +48,6 @@ class Event:
         self.duration = duration
 
         # for channel event functions
-        self.channel = None
         self.section = None
         self.text_channel = None
         self.voice_channel = None
@@ -68,7 +67,7 @@ class Event:
         return (f"Owner: {self.owner}, Summary: {self.summary}, "
                 f"Location: {self.location}, Description: {self.description}, Color: {self.color}, "
                 f"Frequency: {self.frequency}, Dates: {self.dates}, Starts: {self.starts}, Duration: {self.duration}, "
-                f"Channel: {self.channel}, Members: {self.members}"
+                f"Members: {self.members}"
                 f"Section: {self.section}, Text_Channel: {self.text_channel}, Voice_Channel: {self.voice_channel}")
 
 
@@ -77,13 +76,5 @@ class Event:
            self.members = self.members + [owner]
 
     def check_adv_present(self):
-        return isinstance(self.section, int) and (isinstance(self.text_channel, int) or isinstance(self.voice_channel, int))
+        return isinstance(self.section, int) or (isinstance(self.text_channel, int) or isinstance(self.voice_channel, int))
 
-    def toggle_channel_feature(self, create_mode: bool):
-        if create_mode:
-            self.section = f'{self.summary}'
-            self.text_channel = f'{self.summary} general'
-            self.voice_channel = f'{self.summary} vc'
-            self.channel = None
-        else:
-            self.section, self.text_channel, self.voice_channel = None, None, None

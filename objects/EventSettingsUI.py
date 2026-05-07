@@ -28,9 +28,9 @@ class TextModal(ui.Modal, title="Modal Title"):
     async def on_submit(self, interaction: discord.Interaction[Bot]) -> None:
         try:
             setattr(self.values, self.target_attribute, self.nameInput.value)
-            self.view.build()
+            await self.view.build()
             await interaction.response.edit_message(view=self.view)
-        except ValueError:
+        except Exception as e:
             await interaction.response.send_message('Something Went Wrong.', ephemeral=True)
 
 
@@ -98,7 +98,7 @@ class CustomizeModal(ui.Modal, title="Set Custom Color"):
 
             self.view.finish_button.disabled = not self.view.is_valid
             await interaction.response.edit_message(view=self.view)
-        except ValueError:
+        except Exception as e:
             await interaction.response.send_message('Something Went Wrong.', ephemeral=True)
 
 
@@ -202,15 +202,15 @@ class DatesModal(ui.Modal, title="Modal Title"):
                 try:
                     n_date = dt.datetime.strptime(d.strip(),"%Y-%m-%d %H:%M:%S%z")
                     upd_dates.append(n_date)
-                except ValueError:
+                except Exception as e:
                     self.view.malformed_dates.append(d)
 
             self.values.dates = upd_dates
             self.view.finish_button.disabled = not self.view.is_valid
 
-            self.view.build()
+            await self.view.build()
             await interaction.response.edit_message(view=self.view)
-        except ValueError:
+        except Exception as e:
             await interaction.response.send_message('I am a error message and dumb and stupid.', ephemeral=True)
 
 
@@ -245,7 +245,7 @@ class DurationModal(ui.Modal, title='Set hours count'):
 
             self.view.finish_button.disabled = not self.view.is_valid
             await interaction.response.edit_message(view=self.view)
-        except ValueError:
+        except Exception as e:
             await interaction.response.send_message('Invalid count. Please enter a number.', ephemeral=True)
 
 
@@ -279,39 +279,9 @@ class ToggleButton(ui.Button['EventSettings']):
         self.new_val = not self.new_val
         self.label = self.label1 if not self.new_val else self.label2
         if self.callback_flag:
-            self.on_toggle()
+            await self.on_toggle()
         await interaction.response.edit_message(view=self.view)
 
-
-class ChannelSetting(ui.ActionRow['EventSettings']):
-    def __init__(self, event: Event):
-        super().__init__()
-        self.data = event
-        if event.channel is not None:
-            self.select_channel.default_values = [
-                discord.SelectDefaultValue(id=event.channel.id, type=discord.SelectDefaultValueType.channel)
-            ]
-
-    @ui.select(
-        placeholder='Select a channel',
-        channel_types=[discord.ChannelType.voice],
-        max_values=1,
-        min_values=0,
-        cls=ui.ChannelSelect,
-    )
-    async def select_channel(self, interaction: discord.Interaction[Bot], select: ui.ChannelSelect) -> None:
-        if select.values:
-            channel = select.values[0]
-            self.data.channel = interaction.client.get_partial_messageable(
-                channel.id, guild_id=channel.guild_id, type=channel.type
-            )
-            select.default_values = [discord.SelectDefaultValue(id=channel.id, type=discord.SelectDefaultValueType.channel)]
-        else:
-            self.data.channel = None
-            select.default_values = []
-
-        self.view.finish_button.disabled = not self.view.is_valid
-        await interaction.response.edit_message(view=self.view)
 
 
 class MembersSetting(ui.ActionRow['EventSettings']):
@@ -334,6 +304,66 @@ class MembersSetting(ui.ActionRow['EventSettings']):
 
         self.view.finish_button.disabled = not self.view.is_valid
         await interaction.response.edit_message(view=self.view)
+
+
+class AdvSelectionModal(ui.Modal, title="New Zone for "):
+    def __init__(self, view: 'EventSettings', interaction: discord.Interaction):
+        super().__init__()
+        self.view = view
+        self.values = view.data
+        self.title = f'{self.title}{self.values.summary if len(self.values.summary) < 33 else f"{self.values.summary[:29]}..."}' if self.values.summary is not None else "The event is still unnamed tho..."
+
+        self.text_select = ui.Label(
+            text="Select a text channel this event is assigned",
+            component=discord.ui.ChannelSelect(
+                channel_types=[discord.ChannelType.text],
+                min_values=0,
+                max_values=1,
+            )
+        )
+
+        self.vc_select = ui.Label(
+            text="Select a voice channel this event is assigned",
+            component=discord.ui.ChannelSelect(
+                channel_types=[discord.ChannelType.voice],
+                max_values=1,
+            )
+        )
+
+        options = [
+            discord.SelectOption(label=role.name, value=str(role.id))
+            for role in interaction.guild.roles
+            if not role.managed
+               and role != interaction.guild.default_role
+               and (role in interaction.user.roles or role.permissions.value == 0)
+        ]
+
+        self.role_select = ui.Label(
+            text="Select a role for the members of the event",
+            component=ui.Select(max_values=1, options=options)
+        )
+
+        self.add_item(self.text_select)
+        self.add_item(self.vc_select)
+        self.add_item(self.role_select)
+
+
+    async def on_submit(self, interaction: discord.Interaction[Bot]) -> None:
+        try:
+            l_guild = interaction.guild
+            nt_id = int(self.text_select.component.values[0].id)
+            nvb_id = int(self.vc_select.component.values[0].id)
+
+            self.view.data.text_channel = nt_id
+            self.view.data.voice_channel = nvb_id
+            self.view.data.section = l_guild.get_channel(nt_id).category.id or l_guild.get_channel(nvb_id).category.id
+            self.view.data.role = int(self.role_select.component.values[0])
+
+            self.view.finish_button.disabled = not self.view.is_valid
+            await interaction.response.edit_message(view=self.view)
+        except Exception as e:
+            print(e)
+            await interaction.response.send_message('Something Went Wrong.', ephemeral=True)
 
 
 class AdvCreationModal(ui.Modal, title="New Zone for "):
@@ -385,31 +415,33 @@ class AdvCreationModal(ui.Modal, title="New Zone for "):
             self.view.data.section = self.sectionInput.value
             self.view.data.text_channel = self.channelInput.value
             self.view.data.voice_channel = self.vcInput.value
-            self.view.data.is_private = bool(self.permissions.component.values[0])
+            self.view.data.is_private = self.permissions.component.values[0] == "True"
 
             self.view.finish_button.disabled = not self.view.is_valid
             await interaction.response.edit_message(view=self.view)
-        except ValueError:
+        except Exception as e:
             await interaction.response.send_message('Something Went Wrong.', ephemeral=True)
 
 
-class AdvCreationButton(ui.Button['EventSettings']):
-    def __init__(self, values: Event):
+class AdvChannelButton(ui.Button['EventSettings']):
+    def __init__(self, mode: bool):
         super().__init__( label="⚙", style=discord.ButtonStyle.secondary )
+        self.mode = mode
 
     async def callback(self, interaction: discord.Interaction[Bot]) -> None:
         # Tell the type checker that a view is attached already
         assert self.view is not None
-        await interaction.response.send_modal(AdvCreationModal(self.view))
+        if self.mode:
+            await interaction.response.send_modal(AdvCreationModal(self.view))
+        else:
+            await interaction.response.send_modal(AdvSelectionModal(self.view, interaction))
 
 
 class EventSettings(ui.LayoutView):
 
     @property
     def is_valid(self) -> bool:
-        channel_valid = (self.data.channel or (
-                self.data.section and (self.data.text_channel or self.data.voice_channel)
-        ))
+        channel_valid = self.data.voice_channel
 
         return all([
             self.data.summary,
@@ -440,14 +472,13 @@ class EventSettings(ui.LayoutView):
         if full_featured:
             self.count_button = SetCountButton(self.data)
             self.create_channel = ToggleButton("channel_flag", self.channel_flag, "Create 🛠️", "Use 🪧", self.build)
-            self.configure_creation = AdvCreationButton(self.data)
+            self.configure_selection = AdvChannelButton(False)
+            self.configure_creation = AdvChannelButton(True)
 
         self.malformed_dates = []
 
-        self.build()
 
-
-    def build(self):
+    async def build(self):
         # For this example, we'll use multiple sections to organize the settings.
         self.clear_items()
 
@@ -525,7 +556,6 @@ class EventSettings(ui.LayoutView):
             container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
 
             if self.channel_flag:
-                #self.data.toggle_channel_feature(False)
                 container.add_item(
                     ui.Section(
                         ui.TextDisplay('### Configure New Section and Channel\'s information'),
@@ -533,9 +563,12 @@ class EventSettings(ui.LayoutView):
                     )
                 )
             else:
-                #self.data.toggle_channel_feature(True)
-                container.add_item(ui.TextDisplay('### Channel Selection\n-# This is the channel where the message will be sent.'))
-                container.add_item(ChannelSetting(self.data))
+                container.add_item(
+                    ui.Section(
+                        ui.TextDisplay('### Select which section and channels to use'),
+                        accessory=self.configure_selection,
+                    )
+                )
 
             container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
 
