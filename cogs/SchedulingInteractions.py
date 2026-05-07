@@ -3,6 +3,8 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 from discord import app_commands
+
+from cogs.InternalEvents import process_image
 from objects.AutocompleteMixin import AutocompleteMixin
 from objects.Event import Event, format_dates
 from objects.EventColorEnum import EventColor
@@ -46,25 +48,29 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     async def create(self, interaction: discord.Interaction, name:str, dates:str, color: app_commands.Choice[str]=None, mode:int=1):
         """Shows the settings view."""
         await defer(interaction)
-        if not await self.db.check_if_exists(interaction.id, name):
+        if not await self.db.check_if_exists(interaction.guild_id, name):
             try:
                 event = Event(
                     owner=interaction.user.id,
                     name=name,
                     description="",
-                    colour=[color.value] if color is not None else [None],
-                    mode=str(mode),
                     dates=dates,
                     starts=12,
-                    duration=1
+                    duration=1,
+                    mode=str(mode),
+                    colour=[color.value] if color is not None else [None],
                 )
                 view = EventSettings(interaction.user, event)
                 await view.build()
                 await interaction.followup.send(view=view, ephemeral=True)
-            except TypeError:
+            except TypeError as e:
+                print(e)
                 await interaction.followup.send(content="User didn't enter a number in one of the dates", ephemeral=True)
-            except ValueError:
+            except ValueError as e:
+                print(e)
                 await interaction.followup.send(content="User didn't enter a valid date amongst the provided ones", ephemeral=True)
+            except Exception as e:
+                print(e)
         else:
             await interaction.followup.send(content="Event already exists, pick a different name", ephemeral=True)
 
@@ -87,12 +93,20 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
         starts="Start time of event, in 24 hour format (Defaults to 7 p.m)",
         duration="Duration of event in hours (Defaults to 4)",
         timezone="Your current timezone",
-        create_channel="For Scheduled Events set up, use existing or create new section?"
+        create_channel="For Scheduled Events set up, use existing or create new section?",
+        image="Thumbnail to be used for scheduled events (jpg, jpeg and png are accepted)"
     )
     @app_commands.autocomplete(timezone=AutocompleteMixin.timezone_autocomplete)
-    async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, timezone:str="", color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False, image: discord.Attachment=None):
+    async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, timezone:str="", color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False, image:discord.Attachment=None):
         await defer(interaction)
-        if not await self.db.check_if_exists(interaction.id, name):
+        if not await self.db.check_if_exists(interaction.guild_id, name):
+
+            if image:
+                try:
+                    file_name, image_bytes = await process_image(image, interaction)
+                except ValueError:
+                    return
+
             try:
                 event = Event(
                     owner=interaction.user.id,
@@ -103,7 +117,8 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
                     dates=dates,
                     starts=starts,
                     duration=duration,
-                    timezone=timezone
+                    timezone=timezone,
+                    image=(file_name, image_bytes) if image else None
                 )
                 view = EventSettings(interaction.user, event, True, create_channel)
                 await view.build()
@@ -121,7 +136,8 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
     async def quick_create(self, interaction: discord.Interaction, name:str, dates:str):
         await defer(interaction)
-        interaction.client.dispatch("ext_event_q_creation", interaction.guild, interaction.user.id, name, format_dates(dates), 19, 4, int_events_id=None, interaction=interaction)
+        evt_package = Event(interaction.user.id, name, "", format_dates(dates))
+        interaction.client.dispatch("ext_event_q_creation", interaction.guild, evt_package, int_events_id=None, interaction=interaction)
 
 
     @app_commands.command(name="fcq", description="Full Scheduling of an event the user owns, skips the modal")
@@ -129,7 +145,8 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
     async def quick_full_create(self, interaction: discord.Interaction, name:str, dates:str, start_time:int=19, duration:int=4, timezone:str=""):
         await defer(interaction)
-        interaction.client.dispatch("quick_creation", interaction.guild, interaction.user.id, name, format_dates(dates, start_time), start_time, duration, event_data=None, interaction=interaction)
+        evt_package = Event(interaction.user.id, name, "", format_dates(dates, start_time, timezone), start_time, duration)
+        interaction.client.dispatch("quick_creation", interaction.guild, evt_package, event_data=None, interaction=interaction)
 
 
     @app_commands.command(name="cancel", description="Drops one or more scheduled dates for one specific event type")

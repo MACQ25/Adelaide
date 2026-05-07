@@ -11,6 +11,8 @@ from discord import VoiceChannel, TextChannel, SectionComponent, CategoryChannel
 from pymongo import MongoClient, UpdateOne
 from pymongo.server_api import ServerApi
 from discord.ext import commands
+
+from cogs.InternalEvents import save_thumbnail
 from objects.Event import Event
 
 # Didn't use the following install, if problems arise because of the missing [srv] do it later
@@ -82,7 +84,7 @@ class Database(commands.Cog):
             db = self.client.get_database("scheduling")
 
             data: dict[str, Any] = {
-                "name": event.summary,
+                "name": event.name,
                 "desc": event.description,
                 "color": event.color,
                 "frequency": {
@@ -112,8 +114,15 @@ class Database(commands.Cog):
             if event.role is not None:
                 data.update({"role_id": event.role})
 
+            if event.image and isinstance(event.image, tuple):
+                try:
+                    await save_thumbnail(event.image[0], event.image[1])
+                    data.update({"thumbnail" : event.image[0]})
+                except OSError as e:
+                    print(e)
+
             db.guilds.update_one(
-                filter={'_id': g_id, 'event_data.name': {'$ne': event.summary}},
+                filter={'_id': g_id, 'event_data.name': {'$ne': event.name}},
                 update={
                     '$push': {
                         'event_data': data
@@ -138,12 +147,12 @@ class Database(commands.Cog):
 
             existing = db.guilds.find_one(
                 {'_id': g_id},
-                {f'event_days.{event.summary}': 1}
+                {f'event_days.{event.name}': 1}
             )
 
             existing_dates = set()
             if existing:
-                days = existing.get('event_days', {}).get(event.summary, [])
+                days = existing.get('event_days', {}).get(event.name, [])
                 existing_dates = {d['date'] for d in days}
 
             filtered_dates = [d for d in new_dates if d['date'] not in existing_dates]
@@ -153,10 +162,10 @@ class Database(commands.Cog):
                     filter={'_id': g_id},
                     update={
                         '$push': {
-                            f'event_days.{event.summary}': {'$each': filtered_dates}
+                            f'event_days.{event.name}': {'$each': filtered_dates}
                         },
                         '$addToSet': {
-                            f'event_owners.{event.owner}': event.summary
+                            f'event_owners.{event.owner}': event.name
                         }
                     }
                 )
@@ -217,10 +226,10 @@ class Database(commands.Cog):
     async def check_if_exists(self, g_id, val):
         try:
             db = self.client.get_database("scheduling")
-            existing = db.guilds.find_one(
-                {'_id': g_id},
-                {f'event_days.{val}': 1}
-            )
+            existing = db.guilds.count_documents(
+                {"_id": g_id, f"event_days.{val}": {"$exists": True}},
+                limit=1
+            ) > 0
             return existing
         except Exception as e:
             print(e)
@@ -559,6 +568,7 @@ class Database(commands.Cog):
                                     "channel": "$$event.channel",
                                     "desc": "$$event.desc",
                                     "date_samp": "$$event.frequency.sample",
+                                    "thumbnail": "$$event.thumbnail",
                                     "guild_tz": "$timezone"
                                 }
                             }

@@ -127,24 +127,17 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
         finally:
             await self.update_calendar(interaction.guild.id, interaction)
             if event.role is not None:
-                interaction.client.dispatch(
-                    "notify_invitations",
-                    interaction,
-                    event.role,
-                    event.text_channel or event.voice_channel,
-                    event.members,
-                    event.int_evt
-                )
+                interaction.client.dispatch("notify_invitations",interaction, event)
 
 
     @commands.Cog.listener()
-    async def on_ext_event_q_creation(self, guild:discord.Guild|int, u_id:int, event_name:str, dates:list, starts:int, duration:int, int_events_id:list|None=None, interaction:discord.Interaction|None=None, admin:bool=False):
+    async def on_ext_event_q_creation(self, guild:discord.Guild|int, event: Event, int_events_id:list|None=None, interaction:discord.Interaction|None=None, admin:bool=False):
         success: bool
 
         if isinstance(guild, discord.Guild):
            guild = guild.id
 
-        success = await self.db.quick_create(guild, u_id, event_name, dates, starts, duration, int_events_id, admin)
+        success = await self.db.quick_create(guild, event.owner, event.name, event.dates, event.starts, event.duration, int_events_id, admin)
 
 
         if success:
@@ -198,7 +191,9 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
                     days = [d.get("date").astimezone(ZoneInfo(d.get("timezone", {}).get("tz_name", "UTC"))) for d in scheduled]
                     duration = [d.get("duration") for d in scheduled]
 
-                    n_id = await scheduled_events(event_name, event_data.get("desc"), days, duration, interaction.guild, c_channel, event_data.get("thumbnail", None))
+                    evt_package = Event(interaction.user.id, event_name, event_data.get("desc"), days, 0, duration, event_data.get("thumbnail", None))
+
+                    n_id = await scheduled_events(evt_package, interaction.guild, c_channel)
 
                     if len([r for r in n_id if r > 0]) > 0:
                         for ind, ev in enumerate(scheduled):

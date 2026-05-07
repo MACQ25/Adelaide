@@ -12,6 +12,8 @@ import calendar
 
 from discord.ext.commands import Context
 
+from objects.Event import Event
+
 intents = discord.Intents.all()
 intents.members = True
 intents.message_content = True
@@ -92,6 +94,8 @@ async def renew_frequents():
             else:
                 dates = [starting_from + dt.timedelta(days=28)]
 
+            evt_package = Event(-1, event.get("name"), "",  dates, date_sample.get("starts"), date_sample.get("duration"), image=event.get("thumbnail", None))
+
             if "channel" in event:
 
                 ev_data = {
@@ -106,11 +110,7 @@ async def renew_frequents():
                 bot.dispatch(
                     "quick_creation",
                     guild.get("_id"),
-                    0,
-                    event.get("name"),
-                    dates,
-                    date_sample.get("starts"),
-                    date_sample.get("duration"),
+                    evt_package,
                     ev_data,
                     None,
                     True
@@ -119,11 +119,7 @@ async def renew_frequents():
                 bot.dispatch(
                     "ext_event_q_creation",
                     guild.get("_id"),
-                    0,
-                    event.get("name"),
-                    dates,
-                    date_sample.get("starts"),
-                    date_sample.get("duration"),
+                    evt_package,
                     None,
                     None,
                     True

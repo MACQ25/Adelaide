@@ -10,10 +10,26 @@ from objects.AutocompleteMixin import AutocompleteMixin
 from objects.Event import Event
 
 
+async def process_image(image: discord.Attachment, interaction: discord.Interaction) -> tuple[str, bytes]:
+    if not image.content_type or not image.filename.lower().endswith(("png", "jpeg", "jpg")):
+        await interaction.followup.send("Provided attachment was invalid")
+        raise ValueError("Invalid image attachment")
+
+    image_bytes = await image.read()
+    file_name = f"{interaction.user.id}_{image.filename}"
+
+    return file_name, image_bytes
+
+
+async def save_thumbnail(file_name: str, image_bytes: bytes):
+    with open(f"images/event_thumbnail/{file_name}", "wb") as f:
+        f.write(image_bytes)
+
+
 async def role_creation(interaction: discord.Interaction, event: Event):
     guild = interaction.guild
 
-    e_role: discord.Role = discord.utils.get(guild.roles, name=event.summary)
+    e_role: discord.Role = discord.utils.get(guild.roles, name=event.name)
 
     if e_role is not None:
         if e_role.permissions.administrator:
@@ -23,11 +39,11 @@ async def role_creation(interaction: discord.Interaction, event: Event):
             return e_role.id
     else:
         n_role = await guild.create_role(
-            name=event.summary,
+            name=event.name,
             color=discord.Color.from_str(event.custom_set_1 if event.custom_modified else event.color[0]),
             mentionable=True,
             hoist=False,
-            reason=f"Created for event: {event.summary} by {interaction.user.name}"
+            reason=f"Created for event: {event.name} by {interaction.user.name}"
         )
         await interaction.user.add_roles(n_role, reason="Creator of event")
         return n_role.id
@@ -38,24 +54,27 @@ async def role_deletion(interaction: discord.Interaction, role_id: int):
     await guild.get_role(role_id).delete(reason="Event type is being deleted")
 
 
-async def scheduled_events(ev_name: str, ev_description: str, dates: list, duration:int|list, guild: discord.Guild, channel: discord.VoiceChannel, thumbnail:str=None):
+async def scheduled_events(ev_data: Event, guild: discord.Guild, channel: discord.VoiceChannel):
     id_list = []
 
     img = None
-    if thumbnail:
-        with open(f"images/event_thumbnail/{thumbnail}", "rb") as f:
-            img = f.read()
+    if ev_data.image:
+        if isinstance(ev_data.image, str):
+            with open(f"images/event_thumbnail/{ev_data.image}", "rb") as f:
+                img = f.read()
+        else:
+            img = ev_data.image[1]
 
-    now = dt.datetime.now().replace(tzinfo=dates[0].tzinfo)
+    now = dt.datetime.now().replace(tzinfo=ev_data.dates[0].tzinfo)
 
-    for ind, date in enumerate(dates):
+    for ind, date in enumerate(ev_data.dates):
         if date > now:
 
-            end_time = date + dt.timedelta(hours=int(duration[ind] if isinstance(duration, list) else duration))
+            end_time = date + dt.timedelta(hours=int(ev_data.duration[ind] if isinstance(ev_data.duration, list) else ev_data.duration))
 
             s_event = await guild.create_scheduled_event(
-                name=ev_name,
-                description=ev_description,
+                name=ev_data.name,
+                description=ev_data.description,
                 start_time=date,
                 end_time=end_time,
                 entity_type=discord.EntityType.voice,
@@ -127,7 +146,7 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
             c_channel = guild.get_channel(event.voice_channel)
 
-            event.int_evt = await scheduled_events(event.summary, event.description, event.dates, event.duration, guild, c_channel)
+            event.int_evt = await scheduled_events(event, guild, c_channel)
 
             if event.role is None:
                 event.role = await role_creation(interaction, event)
@@ -146,41 +165,45 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
 
     @commands.Cog.listener()
-    async def on_notify_invitations(self, interaction: discord.Interaction, role_id: int, channel_id: int, mentions: list, internal_id: list = None):
+    async def on_notify_invitations(self, interaction: discord.Interaction, event: Event):
         guild = interaction.guild
-        assert all(isinstance(m, discord.Member) for m in mentions)
+        assert all(isinstance(m, discord.Member) for m in event.members)
 
-        channel = guild.get_channel(channel_id)
+        channel = guild.get_channel(event.text_channel or event.voice_channel)
 
         flag = channel.overwrites_for(guild.default_role).view_channel or channel.category.overwrites_for(guild.default_role).view_channel
 
         if flag is None:
-            cleaned_mentions = (", ".join(f"<@{user.id}>" for user in mentions if user.id is not interaction.user.id))
-            await channel.send(content=f"Welcome! this is the official channel of <@&{role_id}>\n <@{interaction.user.id}> has invited you to join\n" + cleaned_mentions)
+            cleaned_mentions = (", ".join(f"<@{user.id}>" for user in event.members if user.id is not interaction.user.id))
+            await channel.send(content=f"Welcome! this is the official channel of <@&{event.role}>\n <@{interaction.user.id}> has invited you to join\n" + cleaned_mentions)
         else:
-            await channel.send(content=f"Welcome! this is the official channel of <@&{role_id}>\n created by: <@{interaction.user.id}>\n currently waiting for people to join :p")
+            await channel.send(content=f"Welcome! this is the official channel of <@&{event.role}>\n created by: <@{interaction.user.id}>\n currently waiting for people to join :p")
 
-        if internal_id:
-           if internal_id[0] > 0:
-               event = await guild.fetch_scheduled_event(internal_id[0])
-               if event:
-                   await channel.send(f"{event.url}")
+        if event.int_evt:
+           if event.int_evt[0] > 0:
+               sch_event = await guild.fetch_scheduled_event(event.int_evt[0])
+               if sch_event:
+                   await channel.send(f"{sch_event.url}")
 
 
     @commands.Cog.listener()
-    async def on_quick_creation(self, guild:discord.Guild|int, u_id:int, event_name:str, dates:list, starts:int, duration:int, event_data=None, interaction:discord.Interaction|None=None, admin:bool=False):
+    async def on_quick_creation(self, guild:discord.Guild|int, event: Event, internal_data=None, interaction: discord.Interaction | None=None, admin:bool=False):
         if isinstance(guild, int):
             guild = self.bot.get_guild(guild)
 
-        if event_data is None:
-            event_data = await self.db.get_internal_data(guild.id, u_id, event_name)
+        if internal_data is None:
+            internal_data = await self.db.get_internal_data(guild.id, event.owner, event.name)
 
-        if event_data is None and interaction:
+        if internal_data is None and interaction:
             await interaction.followup.send(content="Event has not been set up for this command :c", ephemeral=True)
 
-        if event_data.get("vc_id"):
-            c_channel = guild.get_channel(event_data.get("vc_id"))
-            internal_id = await scheduled_events(event_name, event_data.get("desc"), dates, duration, guild, c_channel, event_data.get("thumbnail", None))
+        if internal_data.get("vc_id"):
+            c_channel = guild.get_channel(internal_data.get("vc_id"))
+
+            event.description = internal_data.get("desc")
+            event.image = internal_data.get("thumbnail", None)
+
+            internal_id = await scheduled_events(event, guild, c_channel)
 
             dispatcher = interaction.client if interaction else self.bot
             u_id = interaction.user.id if interaction else -1
@@ -188,11 +211,7 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
             dispatcher.dispatch(
                 "ext_event_q_creation",
                 guild,
-                u_id,
-                event_name,
-                dates,
-                starts,
-                duration,
+                event,
                 internal_id,
                 interaction,
                 admin
@@ -242,15 +261,10 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
     async def add_image(self, interaction: discord.Interaction, target: str, image: discord.Attachment):
         # noinspection PyUnresolvedReferences
         await interaction.response.defer()
-        if not image.content_type or not image.filename.lower().endswith(("png", "jpeg", "jpg")):
-            await interaction.followup.send("What even was that?")
 
-        image_bytes = await image.read()
+        file_name, image_bytes = await process_image(image, interaction)
 
-        file_name = f"{interaction.user.id}_{image.filename}"
-
-        with open(f"images/event_thumbnail/{file_name}", "wb") as f:
-            f.write(image_bytes)
+        await save_thumbnail(file_name, image_bytes)
 
         if await self.db.update_thumbnail(interaction.guild_id, interaction.user.id, target, file_name):
             internal_ids = await self.db.get_all_internal_id(interaction.guild_id, interaction.user.id, target)

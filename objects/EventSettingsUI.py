@@ -311,7 +311,7 @@ class AdvSelectionModal(ui.Modal, title="New Zone for "):
         super().__init__()
         self.view = view
         self.values = view.data
-        self.title = f'{self.title}{self.values.summary if len(self.values.summary) < 33 else f"{self.values.summary[:29]}..."}' if self.values.summary is not None else "The event is still unnamed tho..."
+        self.title = f'{self.title}{self.values.name if len(self.values.name) < 33 else f"{self.values.name[:29]}..."}' if self.values.name is not None else "The event is still unnamed tho..."
 
         self.text_select = ui.Label(
             text="Select a text channel this event is assigned",
@@ -371,7 +371,7 @@ class AdvCreationModal(ui.Modal, title="New Zone for "):
         super().__init__()
         self.view = view
         self.values = view.data
-        self.title = f'{self.title}{self.values.summary if len(self.values.summary) < 33 else f"{self.values.summary[:29]}..."}' if self.values.summary is not None else "The event is still unnamed tho..."
+        self.title = f'{self.title}{self.values.name if len(self.values.name) < 33 else f"{self.values.name[:29]}..."}' if self.values.name is not None else "The event is still unnamed tho..."
 
         self.permissions = ui.Label(
             text="Select this section's visibility",
@@ -386,20 +386,20 @@ class AdvCreationModal(ui.Modal, title="New Zone for "):
 
         self.sectionInput = ui.TextInput(
             label="Name of the new section",
-            default=f'{self.values.summary}',
+            default=f'{self.values.name}',
             style=discord.TextStyle.paragraph,
             required=True
         )
 
         self.channelInput = ui.TextInput(
             label="Name of the new text channel",
-            default=f'{self.values.summary} general',
+            default=f'{self.values.name} general',
             style=discord.TextStyle.paragraph,
             required=True
         )
         self.vcInput = ui.TextInput(
             label="Name of the new voice channel",
-            default=f'{self.values.summary} vc',
+            default=f'{self.values.name} vc',
             style=discord.TextStyle.paragraph,
             required=True
         )
@@ -444,7 +444,7 @@ class EventSettings(ui.LayoutView):
         channel_valid = self.data.voice_channel
 
         return all([
-            self.data.summary,
+            self.data.name,
             self.data.color,
             self.data.frequency,
             len(self.data.dates) > 0,
@@ -463,7 +463,7 @@ class EventSettings(ui.LayoutView):
         self.full_featured = full_featured
         self.channel_flag = cc
 
-        self.event_name_btn = SetTextButton(self.data, "summary", "Set Title", "Set a new title", self.data.summary)
+        self.event_name_btn = SetTextButton(self.data, "name", "Set Title", "Set a new title", self.data.name)
         self.event_desc_btn = SetTextButton(self.data, "description", "Desc", "Write a description for the event", self.data.description)
         self.event_dates_btn = SetDatesButton(self.data)
         self.color_select = ColorSetting(self.data)
@@ -489,7 +489,7 @@ class EventSettings(ui.LayoutView):
 
         container.add_item(
             ui.Section(
-                ui.TextDisplay(f'## Event Name\n-# The name to be saved to the discord UI. \n\nCurrent: { ("\n**"  + self.data.summary + "**") if self.data.summary else " You MUST set a title"}\n'),
+                ui.TextDisplay(f'## Event Name\n-# The name to be saved to the discord UI. \n\nCurrent: { ("\n**" + self.data.name + "**") if self.data.name else " You MUST set a title"}\n'),
                 accessory=self.event_name_btn,
             )
         )
