@@ -11,6 +11,7 @@ from objects.AutocompleteMixin import AutocompleteMixin
 from objects.Event import Event
 from CalendarImageGen import draw
 from cogs.InternalEvents import role_deletion, scheduled_events
+from objects.PersistentRoleButton import PersistentRoleButton
 
 
 async def check_permissions_assigned(bot, channel: discord.TextChannel) -> dict:
@@ -93,17 +94,18 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
                     except discord.NotFound:
                         continue
 
+                roles = [r.get('role_id') for r in data.get("event_data", []) if 'role_id' in r]
 
                 file = discord.File(img, filename="Calendar.jpeg")
                 embed = discord.Embed(title=f"📅 {upd_time.strftime("%B")} Calendar", color=discord.Color.blue())
                 embed.set_image(url="attachment://Calendar.jpeg")
                 embed.description = (
-                        ("Scheduled Events: " + ", ".join(f"<@&{r.get('role_id')}>" for r in data.get("event_data", []) if 'role_id' in r))
+                        ("Scheduled Events: " + ", ".join(f"<@&{r}>" for r in roles))
                     if events else "There are no scheduled events on record Y.Y"
                 )
                 embed.set_footer(text=f"Last updated: {upd_time.strftime('%Y-%m-%d %H:%M')}, {tmz}")
 
-                msg = await a_channel.send(embed=embed, file=file)
+                msg = await a_channel.send(embed=embed, file=file, view=PersistentRoleButton(roles))
                 await msg.pin()
 
                 if interaction is not None:

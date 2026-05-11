@@ -2,25 +2,31 @@ import datetime as dt
 from datetime import tzinfo
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo
-
 import discord
 from aiohttp.log import client_logger
 from discord.ext import commands
 import os
 import asyncio
 import calendar
-
 from discord.ext.commands import Context
-
 from objects.Event import Event
+from objects.PersistentRoleButton import PersistentRoleButton
 
-intents = discord.Intents.all()
-intents.members = True
-intents.message_content = True
 
-description = 'This is a description'
+class AdelaideBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.all()
+        intents.members = True
+        intents.message_content = True
+        description = 'This is a description'
+        super().__init__(command_prefix=commands.when_mentioned_or('/'), description=description, intents=intents)
 
-bot = commands.Bot(command_prefix=commands.when_mentioned_or('/'), description=description, intents=intents)
+    async def setup_hook(self) -> None:
+        self.add_view(PersistentRoleButton())
+
+
+bot = AdelaideBot()
+
 
 @bot.event
 async def on_ready():
