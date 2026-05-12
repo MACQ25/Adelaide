@@ -72,12 +72,15 @@ class CustomizeModal(ui.Modal, title="Set Custom Color"):
         self.colorInput2 = ui.TextInput(
             label="secondary color for gradient, if any",
             style=discord.TextStyle.short,
-            placeholder= EventColor.custom.as_text()
+            placeholder= EventColor.custom.as_text(),
+            default= view.data.custom_set_2 or (view.data.color[1] if len(view.data.color) > 1 else EventColor.custom.as_text())
+
         )
         self.colorInput3 = ui.TextInput(
-            label="Gradient degree (1.0 - 0.01, ideal 0.35)",
+            label="Gradient degree (1.0 - 0.01, ideal -> 0.75)",
             style=discord.TextStyle.short,
-            placeholder="1.0"
+            placeholder="0.75",
+            default= str(view.data.custom_gradient) if view.data.custom_gradient else (str(view.data.color[2]) if len(view.data.color) > 2 else "0.75")
         )
 
         self.add_item(self.textHelper)
@@ -117,7 +120,10 @@ class ColorSetting(ui.ActionRow['EventSettings']):
     def __init__(self, values: Event):
         super().__init__()
         self.values = values
-        self.update_options()
+        if len(self.values.color) > 1:
+            self.sync_custom_state()
+        else:
+            self.update_options()
 
     def update_options(self):
         for option in self.select_color.options:
@@ -212,7 +218,6 @@ class DatesModal(ui.Modal, title="Modal Title"):
             await interaction.response.edit_message(view=self.view)
         except Exception as e:
             await interaction.response.send_message('I am a error message and dumb and stupid.', ephemeral=True)
-
 
 
 class SetDatesButton(ui.Button['EventSettings']):
@@ -319,6 +324,7 @@ class AdvSelectionModal(ui.Modal, title="New Zone for "):
                 channel_types=[discord.ChannelType.text],
                 min_values=0,
                 max_values=1,
+                default_values=[interaction.guild.get_channel(self.view.data.text_channel)]
             )
         )
 
@@ -327,11 +333,12 @@ class AdvSelectionModal(ui.Modal, title="New Zone for "):
             component=discord.ui.ChannelSelect(
                 channel_types=[discord.ChannelType.voice],
                 max_values=1,
+                default_values=[interaction.guild.get_channel(self.view.data.voice_channel)]
             )
         )
 
         options = [
-            discord.SelectOption(label=role.name, value=str(role.id))
+            discord.SelectOption(label=role.name, value=str(role.id), default=self.view.data.role == role.id)
             for role in interaction.guild.roles
             if not role.managed
                and role != interaction.guild.default_role
@@ -455,7 +462,7 @@ class EventSettings(ui.LayoutView):
 
     row = ui.ActionRow()
 
-    def __init__(self, owner, data: Event, full_featured=False, cc=False):
+    def __init__(self, owner, data: Event, full_featured=False, cc=False, update_mode=False):
         super().__init__()
 
         self.data = data
@@ -474,6 +481,8 @@ class EventSettings(ui.LayoutView):
             self.create_channel = ToggleButton("channel_flag", self.channel_flag, "Create 🛠️", "Use 🪧", self.build)
             self.configure_selection = AdvChannelButton(False)
             self.configure_creation = AdvChannelButton(True)
+
+        self.update_mode = update_mode
 
         self.malformed_dates = []
 
@@ -544,18 +553,19 @@ class EventSettings(ui.LayoutView):
                 )
             )
 
-            container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
+            if not self.update_mode:
+                container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
 
-            container.add_item(
-                ui.Section(
-                    ui.TextDisplay('### Create Channel or Use Pre-existing?'),
-                    accessory=self.create_channel,
+                container.add_item(
+                    ui.Section(
+                        ui.TextDisplay('### Create Channel or Use Pre-existing?'),
+                        accessory=self.create_channel,
+                    )
                 )
-            )
 
             container.add_item(ui.Separator(spacing=discord.SeparatorSpacing.small))
 
-            if self.channel_flag:
+            if self.channel_flag and not self.update_mode:
                 container.add_item(
                     ui.Section(
                         ui.TextDisplay('### Configure New Section and Channel\'s information'),

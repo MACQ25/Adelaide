@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from zoneinfo import ZoneInfo
+
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -178,6 +180,59 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     async def full_delete(self, interaction: discord.Interaction, name:str):
         await defer(interaction)
         interaction.client.dispatch("ext_event_full_clean", interaction, name)
+
+
+    async def get_parsed_data(self, interaction: discord.Interaction, event_name):
+        data, days = await self.db.get_target_event(interaction.guild_id, interaction.user.id, event_name)
+        ev_data = Event(
+            interaction.user.id,
+            data.get("name"),
+            data.get("desc"),
+            [d.get("date").astimezone(ZoneInfo(d.get("timezone", {}).get("tz_name", "UTC"))) for d in days],
+            mode=data.get("frequency", {}).get("mode"),
+            colour=data.get("color")
+        )
+
+        if len(ev_data.color) > 1:
+            ev_data.custom_set_1 = ev_data.color[0]
+            ev_data.custom_set_2 = ev_data.color[1]
+            ev_data.custom_gradient = ev_data.color[2]
+
+        full_flag = False
+
+        if any(key in data for key in ["channel", "role_id", "thumbnail", "members"]):
+            full_flag = True
+            ev_data.section = data.get("channel",  {}).get("section_id", None)
+            ev_data.text_channel = data.get("channel",  {}).get("text_id", None)
+            ev_data.voice_channel = data.get("channel",  {}).get("vc_id", None)
+            ev_data.role = data.get("role_id")
+            ev_data.is_private = data.get("is_private", False)
+            ev_data.members = [interaction.guild.get_member(m) for m in data.get("members", [])]
+            ev_data.duration = data.get("frequency", {}).get("sample", {}).get("duration")
+
+        return ev_data, full_flag
+
+
+    @app_commands.command(name="update", description="allows you to update the data associated with a particular event")
+    @app_commands.describe(name="name of the target event")
+    @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
+    async def update_event(self,  interaction: discord.Interaction, name: str):
+        await defer(interaction)
+        event, full_flag = await self.get_parsed_data(interaction, name)
+        view = EventSettings(interaction.user, event, full_flag, update_mode=True)
+        await view.build()
+        await interaction.followup.send(view=view, ephemeral=True)
+
+
+    @app_commands.command(name="upgrade", description="upgrades a simple event to a full one, with channels and a role")
+    @app_commands.describe(name="name of the target event")
+    @app_commands.autocomplete(name=AutocompleteMixin.owned_basics_autocomplete)
+    async def update_to_full(self, interaction: discord.Interaction, name: str):
+        await defer(interaction)
+        event, full_flag = await self.get_parsed_data(interaction, name)
+        view = EventSettings(interaction.user, event, True, update_mode=True)
+        await view.build()
+        await interaction.followup.send(view=view, ephemeral=True)
 
 
 async def setup(bot):

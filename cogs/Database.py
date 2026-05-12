@@ -102,7 +102,7 @@ class Database(commands.Cog):
                 "active": True,
             }
 
-            if event.check_adv_present():
+            if event.check_channel_present():
                 channel_data = {
                     "section_id": event.section if event.section else None,
                     "text_id": event.text_channel if event.text_channel else None,
@@ -114,7 +114,8 @@ class Database(commands.Cog):
 
             if len(event.members) > 0:
                 members = [m.id for m in event.members]
-                members.append(event.owner)
+                if event.owner not in members:
+                    members.append(event.owner)
                 data.update({"members": members})
 
             if event.role is not None:
@@ -358,7 +359,7 @@ class Database(commands.Cog):
             return options
         except Exception as e:
             print(e)
-            raise Exception("Failed to create the event") from e
+            raise Exception("Failed to find names") from e
 
 
     async def get_by_class(self, g_id, event_name):
@@ -379,6 +380,60 @@ class Database(commands.Cog):
             raise Exception("Failed to create the event") from e
 
 
+    async def get_by_basic(self, g_id, user_id):
+        try:
+            db = self.client.get_database("scheduling")
+
+            pipeline = [
+                { "$match": { "_id": g_id } },
+                {"$project": {
+                    "event_data": {"$filter": {
+                        "input": "$event_data",
+                        "as": "ev",
+                        "cond": {"$in": ["$$ev.name", f"$event_owners.{user_id}"]}
+                    }}
+                }},
+                {"$unwind": "$event_data"},
+                {"$match": {"$and": [
+                    {"event_data.channel": {"$exists": False}},
+                    {"event_data.role_id": {"$exists": False}},
+                    {"event_data.members": {"$exists": False}},
+                ]}},
+                {"$group": {"_id": None, "names": {"$push": "$event_data.name"}}},
+                {"$project": {"_id": 0, "names": 1}},
+            ]
+
+            res = db.guilds.aggregate(pipeline).next()
+
+            return res
+
+        except Exception as e:
+            print(e)
+            raise Exception("Failed to find basics")
+
+
+    async def get_target_event(self, g_id, user_id, event_name):
+        try:
+            db = self.client.get_database("scheduling")
+
+            res = db.guilds.find_one(
+                filter={
+                    "_id": g_id,
+                    f'event_owners.{user_id}': {'$in': [event_name]}
+                },
+                projection={
+                    "event_data": {'$elemMatch': {'name': event_name}},
+                    f"event_days.{event_name}": 1
+                }
+            )
+
+            return res['event_data'][0],  res['event_days'][event_name]
+
+        except Exception as e:
+            print(e)
+            raise Exception("how did we get here?")
+
+
     async def get_internal_data(self, g_id, user_id, event_name):
         try:
             db = self.client.get_database("scheduling")
@@ -386,7 +441,7 @@ class Database(commands.Cog):
             result = db.guilds.find_one(
                 filter={
                     '_id': g_id,
-                    f'event_owners.{user_id}': {'$exists': True}
+                    f'event_owners.{user_id}': {'$in': [event_name]}
                 },
                 projection={
                     "event_data": {
@@ -435,7 +490,7 @@ class Database(commands.Cog):
             result = db.guilds.find_one(
                 filter={
                     '_id': g_id,
-                    f'event_owners.{user_id}': {'$exists': True}
+                    f'event_owners.{user_id}': {'$in': [event_name]}
                 },
                 projection={
                     "event_days": {

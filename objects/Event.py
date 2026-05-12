@@ -28,7 +28,7 @@ def format_dates(dates:str, start_time:int=12, tmz_s=None):
 
 class Event:
 
-    def __init__(self, owner:int, name:str, description:str, dates:str|list[dt.datetime], starts:int = None, duration:int|list[int] = None, mode:str = None, colour:List[str] = None, timezone:str = None, image:tuple[str, bytes]= None):
+    def __init__(self, owner:int, name:str, description:str, dates:str|list[dt.datetime], starts:int = None, duration:int|list[int] = None, mode:str|int = None, colour:List[str] = None, timezone:str = None, image:tuple[str, bytes]= None):
         # Unique information saved on its own folder, relational style
         self.owner = owner
 
@@ -41,7 +41,7 @@ class Event:
         self.custom_set_1 = None
         self.custom_set_2 = None
         self.custom_gradient = None
-        self.frequency = int(mode)
+        self.frequency = mode if isinstance(mode, int) else int(mode)
 
         # Saved on a general ID tracked list of dates, based on server
         self.dates = format_dates(dates, start_time=starts, tmz_s=timezone) if isinstance(dates, str) else dates
@@ -61,14 +61,10 @@ class Event:
 
         self.image = image
 
-        # Vestigial, ignore them until further notice
-        # self.recurrence = recurrence
-        # self.attendees = attendee
-
 
     def __str__(self):
         return (f"Owner: {self.owner}, Summary: {self.name}, "
-                f"Location: {self.location}, Description: {self.description}, Color: {self.color}, "
+                f"Description: {self.description}, Color: {self.color}, "
                 f"Frequency: {self.frequency}, Dates: {self.dates}, Starts: {self.starts}, Duration: {self.duration}, "
                 f"Members: {self.members}"
                 f"Section: {self.section}, Text_Channel: {self.text_channel}, Voice_Channel: {self.voice_channel}")
@@ -79,6 +75,5 @@ class Event:
            self.members = self.members + [owner]
 
 
-    def check_adv_present(self):
+    def check_channel_present(self):
         return isinstance(self.section, int) or (isinstance(self.text_channel, int) or isinstance(self.voice_channel, int))
-

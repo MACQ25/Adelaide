@@ -8,10 +8,14 @@ class AutocompleteMixin:
     def setup_db(self, bot):
         self.db = bot.get_cog("Database")
 
-
     async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         owned = await self.db.get_by_user(interaction.guild_id, interaction.user.id)
         return [ app_commands.Choice(name=item, value=item) for item in owned if item.__contains__(current) or current.__len__() == 0]
+
+
+    async def owned_basics_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        owned = await self.db.get_by_basic(interaction.guild_id, interaction.user.id)
+        return [ app_commands.Choice(name=item, value=item) for item in owned.get("names", []) ]
 
 
     async def event_dates_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
@@ -61,3 +65,5 @@ class AutocompleteMixin:
     async def timezone_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         zones = sorted(zoneinfo.available_timezones())
         return [ app_commands.Choice(name=tz, value=tz) for tz in zones if current.lower() in tz.lower()][:25]
+
+
