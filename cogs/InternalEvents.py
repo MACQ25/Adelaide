@@ -1,14 +1,12 @@
 import datetime as dt
 import uuid
-from dataclasses import MISSING
-
 import discord
 from discord import app_commands
 from discord.ext import commands
-from typing import Callable, Optional
-
-from objects.AutocompleteMixin import AutocompleteMixin
-from objects.Event import Event
+from utils.AutocompleteMixin import AutocompleteMixin
+from data_entities.Event import Event
+from utils.InteractionDefer import defer
+from utils.RoleCheck import role_check
 
 
 async def process_image(image: discord.Attachment, interaction: discord.Interaction) -> tuple[str, bytes]:
@@ -93,7 +91,7 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.get_cog("Database")
-        self.setup_db(self.bot)
+        self.autocomplete_setup(self.bot)
 
 
     async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
@@ -258,9 +256,9 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
 
     @app_commands.command(name="attach_image", description="Add an image to an event you own")
     @app_commands.autocomplete(target=owned_events_autocomplete)
+    @role_check()
     async def add_image(self, interaction: discord.Interaction, target: str, image: discord.Attachment):
-        # noinspection PyUnresolvedReferences
-        await interaction.response.defer()
+        await defer(interaction)
 
         file_name, image_bytes = await process_image(image, interaction)
 
@@ -274,6 +272,28 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
                     await t_guild.get_scheduled_event(i_id).edit(image=image_bytes)
 
         await interaction.followup.send("done", Ephemeral=True)
+
+
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.command(name="associated_role", description="Assign which role is allowed to use commands")
+    async def managerial_role(self, interaction:discord.Interaction, role:discord.Role):
+        await defer(interaction)
+        if await self.db.update_associated_role(interaction.guild_id, role.id):
+            await interaction.followup.send(f"Assigned Role Updated To <@&{role.id}>")
+        else:
+            await interaction.followup.send("Role assignment failed")
+
+
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.command(name="remove_associated", description="Remove the requirement for a role when using commands")
+    async def remove_role(self, interaction:discord.Interaction):
+        await defer(interaction)
+        if await self.db.delete_assigned_role(interaction.guild_id):
+            await interaction.followup.send(f"No role is associated with the use of this bot now")
+        else:
+            await interaction.followup.send("There was no role associated with it already")
 
 
 async def setup(bot: commands.Bot):

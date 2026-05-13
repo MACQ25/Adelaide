@@ -1,19 +1,16 @@
 import calendar
-import datetime
 import os
 from datetime import datetime as dt, timezone, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
-
 import discord
 from bson import CodecOptions
-from discord import VoiceChannel, TextChannel, SectionComponent, CategoryChannel, RoleTags
+from discord import VoiceChannel, TextChannel, CategoryChannel
 from pymongo import MongoClient, UpdateOne
 from pymongo.server_api import ServerApi
 from discord.ext import commands
-
 from cogs.InternalEvents import save_thumbnail
-from objects.Event import Event
+from data_entities.Event import Event
 
 # Didn't use the following install, if problems arise because of the missing [srv] do it later
 # python -m pip install "pymongo[srv]"
@@ -421,7 +418,7 @@ class Database(commands.Cog):
 
         except Exception as e:
             print(e)
-            raise Exception("how did we get here?")
+            raise Exception("No data was found, either you dont own the event or it doesnt exist")
 
 
     async def get_internal_data(self, g_id, user_id, event_name):
@@ -634,6 +631,25 @@ class Database(commands.Cog):
             print(e)
 
 
+    async def get_assigned_role(self, g_id):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.find_one(
+                filter={
+                    '_id': g_id
+                },
+                projection={
+                    "_id": 0,
+                    "associated_role": 1
+                }
+            )
+
+            return result.get('associated_role', None)
+        except Exception as e:
+            print(e)
+
+
     async def update_thumbnail(self, g_id, user_id, event_name, thm_name):
         try:
             db = self.client.get_database("scheduling")
@@ -736,6 +752,32 @@ class Database(commands.Cog):
 
             if result.matched_count == 0:
                 print("Operation denied: user does not own this event.")
+                return False
+
+            return True
+
+        except Exception as e:
+            print(e)
+
+
+    async def update_associated_role(self, g_id, role_id):
+        try:
+            db = self.client.get_database("scheduling")
+
+            result = db.guilds.update_one(
+                filter={
+                    "_id": g_id,
+                },
+                update={
+                    "$set": {
+                        f"associated_role": role_id
+                    }
+                },
+                upsert=True
+            )
+
+            if result.matched_count == 0:
+                print("How did we get here?")
                 return False
 
             return True
@@ -1014,6 +1056,25 @@ class Database(commands.Cog):
                     "element.channel.section_id": None,
                 }]
             )
+
+        except Exception as e:
+            print(e)
+
+
+    async def delete_assigned_role(self, g_id):
+        try:
+            db = self.client.get_database("scheduling")
+
+            res = db.guilds.update_one(
+                filter={ "_id": g_id },
+                update={
+                    "$unset": {
+                        "associated_role" : None
+                    }
+                }
+            )
+
+            return res.modified_count == 1
 
         except Exception as e:
             print(e)

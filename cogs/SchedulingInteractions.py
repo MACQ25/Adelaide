@@ -1,29 +1,29 @@
 from __future__ import annotations
-
 from zoneinfo import ZoneInfo
-
 import discord
 from discord.ext import commands
 from discord import app_commands
-
 from cogs.InternalEvents import process_image
-from objects.AutocompleteMixin import AutocompleteMixin
-from objects.Event import Event, format_dates
-from objects.EventColorEnum import EventColor
-from objects.EventSettingsUI import EventSettings
-import zoneinfo
+from utils.AutocompleteMixin import AutocompleteMixin
+from utils.ErrorHandlerMixin import ErrorHandlerMixin
+from data_entities.Event import Event, format_dates
+from views.EventColorEnum import EventColor
+from views.EventSettingsUI import EventSettings
+from utils.RoleCheck import role_check
+from utils.InteractionDefer import defer
 
 
-async def defer(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)  # type: ignore[attr-defined]
-
-
-class SchedulingInteractions(AutocompleteMixin, commands.Cog):
+class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.get_cog("Database")
-        self.setup_db(self.bot)
+        self.autocomplete_setup(self.bot)
 
+    @app_commands.command(name="secret", description="a command that is secret")
+    @role_check()
+    async def secret(self, interaction: discord.Interaction):
+        await defer(interaction)
+        await interaction.followup.send("You have the dynamic role!")
 
     @app_commands.command(name="check", description="helper function to check if database is currently available")
     async def check(self, interaction: discord.Interaction):
@@ -99,10 +99,11 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
         image="Thumbnail to be used for scheduled events (jpg, jpeg and png are accepted)"
     )
     @app_commands.autocomplete(timezone=AutocompleteMixin.timezone_autocomplete)
+    @role_check()
     async def full_create(self, interaction: discord.Interaction, name:str, dates:str, starts:int=19, duration:int=4, timezone:str="", color: app_commands.Choice[str]=None, mode:int=1, desc:str="", create_channel:bool=False, image:discord.Attachment=None):
         await defer(interaction)
         if not await self.db.check_if_exists(interaction.guild_id, name):
-
+            file_name, image_bytes = None, None
             if image:
                 try:
                     file_name, image_bytes = await process_image(image, interaction)
@@ -145,6 +146,7 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     @app_commands.command(name="fcq", description="Full Scheduling of an event the user owns, skips the modal")
     @app_commands.describe( name="The name of the event", dates="Comma-separated list of dates in M-D format, if only D provided then current month will be assumed", start_time="Start time of the event to create", duration="Duration of the event, in hours")
     @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
+    @role_check()
     async def quick_full_create(self, interaction: discord.Interaction, name:str, dates:str, start_time:int=19, duration:int=4, timezone:str=""):
         await defer(interaction)
         evt_package = Event(interaction.user.id, name, "", format_dates(dates, start_time, timezone), start_time, duration)
@@ -155,15 +157,15 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     @app_commands.describe(
         name="The name of the event",
         dates="Comma-separated list of dates, empty will assume the closest date",
-        all="Deletes all currently scheduled dates without setting it to inactive, overrides dates field"
+        everything="Deletes all currently scheduled dates without setting it to inactive, overrides dates field"
     )
     @app_commands.autocomplete( name=AutocompleteMixin.owned_events_autocomplete, dates=AutocompleteMixin.event_dates_autocomplete )
-    async def delete(self, interaction: discord.Interaction, name:str, dates:str="", all:bool=False):
+    async def delete(self, interaction: discord.Interaction, name:str, dates:str="", everything:bool=False):
         await defer(interaction)
-        if len(dates) == 0 and not all:
+        if len(dates) == 0 and not everything:
             interaction.followup.send("No dates were given, nor was it requested to delete everything")
         else:
-            interaction.client.dispatch("ext_event_cancellation", interaction, name, dates.split(","), all)
+            interaction.client.dispatch("ext_event_cancellation", interaction, name, dates.split(","), everything)
 
 
     @app_commands.command(name="hiatus", description="Drops all forthcoming dates for the entered event and sets it as inactive")
@@ -183,7 +185,11 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
 
 
     async def get_parsed_data(self, interaction: discord.Interaction, event_name):
-        data, days = await self.db.get_target_event(interaction.guild_id, interaction.user.id, event_name)
+        try:
+            data, days = await self.db.get_target_event(interaction.guild_id, interaction.user.id, event_name)
+        except Exception as e:
+            raise Exception(e)
+
         ev_data = Event(
             interaction.user.id,
             data.get("name"),
@@ -218,21 +224,28 @@ class SchedulingInteractions(AutocompleteMixin, commands.Cog):
     @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
     async def update_event(self,  interaction: discord.Interaction, name: str):
         await defer(interaction)
-        event, full_flag = await self.get_parsed_data(interaction, name)
-        view = EventSettings(interaction.user, event, full_flag, update_mode=True)
-        await view.build()
-        await interaction.followup.send(view=view, ephemeral=True)
+        try:
+            event, full_flag = await self.get_parsed_data(interaction, name)
+            view = EventSettings(interaction.user, event, full_flag, update_mode=True)
+            await view.build()
+            await interaction.followup.send(view=view, ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(e, ephemeral=True)
 
 
     @app_commands.command(name="upgrade", description="upgrades a simple event to a full one, with channels and a role")
     @app_commands.describe(name="name of the target event")
     @app_commands.autocomplete(name=AutocompleteMixin.owned_basics_autocomplete)
+    @role_check()
     async def update_to_full(self, interaction: discord.Interaction, name: str):
         await defer(interaction)
-        event, full_flag = await self.get_parsed_data(interaction, name)
-        view = EventSettings(interaction.user, event, True, update_mode=True)
-        await view.build()
-        await interaction.followup.send(view=view, ephemeral=True)
+        try:
+            event, full_flag = await self.get_parsed_data(interaction, name)
+            view = EventSettings(interaction.user, event, True, update_mode=True)
+            await view.build()
+            await interaction.followup.send(view=view, ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(e, ephemeral=True)
 
 
 async def setup(bot):

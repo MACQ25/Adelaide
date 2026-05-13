@@ -3,7 +3,7 @@ import discord
 from discord import Interaction
 from discord._types import ClientT
 from discord.ext import commands
-from objects.EventColorEnum import EventColor
+from views.EventColorEnum import EventColor
 
 
 def get_event_color(color: discord.Color) -> EventColor:
@@ -73,5 +73,8 @@ class PersistentRoleButton(discord.ui.View):
             ec = get_event_color(r.color)
             options.append(discord.SelectOption(label=r.name, value=str(r.id), emoji=ec.emoji if ec else '👤'))
 
-        view = DropdownView(options=options)
-        await interaction.response.send_message("Choose one", view=view, ephemeral=True)
+        if options:
+            view = DropdownView(options=options)
+            await interaction.response.send_message("Choose one", view=view, ephemeral=True)
+        else:
+            await interaction.response.send_message("No events with an associated role, sorry :p", ephemeral=True)

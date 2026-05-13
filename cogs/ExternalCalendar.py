@@ -1,17 +1,18 @@
 import calendar
-from datetime import datetime as dt, tzinfo, datetime
-from datetime import date, timedelta
+from datetime import datetime as dt, datetime
 from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import commands
 from discord import app_commands
 from cogs.SchedulingInteractions import defer
-from objects.AutocompleteMixin import AutocompleteMixin
-from objects.Event import Event
+from utils.AutocompleteMixin import AutocompleteMixin
+from utils.ErrorHandlerMixin import ErrorHandlerMixin
+from data_entities.Event import Event
 from CalendarImageGen import draw
 from cogs.InternalEvents import role_deletion, scheduled_events
-from objects.PersistentRoleButton import PersistentRoleButton
+from views.PersistentRoleButton import PersistentRoleButton
+from utils.RoleCheck import role_check
 
 
 async def check_permissions_assigned(bot, channel: discord.TextChannel) -> dict:
@@ -33,11 +34,11 @@ def lacks_perms_msg(bot, channel, permission_dict):
     return f"Could not set up channel, missing permissions for <@{bot.user.id}> on <#{channel.id}>\n\n**MISSING**:\n" + "\n".join([k for k in permission_dict.keys() if not permission_dict[k]])
 
 
-class ExternalCalendar(AutocompleteMixin, commands.Cog):
+class ExternalCalendar(ErrorHandlerMixin, AutocompleteMixin, commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.get_cog("Database")
-        self.setup_db(self.bot)
+        self.autocomplete_setup(self.bot)
 
 
     async def update_calendar(self, guild_id: int, interaction:discord.Interaction = None):
@@ -105,7 +106,7 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
                 )
                 embed.set_footer(text=f"Last updated: {upd_time.strftime('%Y-%m-%d %H:%M')}, {tmz}")
 
-                msg = await a_channel.send(embed=embed, file=file, view=PersistentRoleButton(roles))
+                msg = await a_channel.send(embed=embed, file=file, view=PersistentRoleButton())
                 await msg.pin()
 
                 if interaction is not None:
@@ -228,6 +229,7 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
 
 
     @app_commands.command(name="force-refresh", description="Forces a refresh of the pinned calendar")
+    @role_check()
     async def fr(self, interaction: discord.Interaction):
         # noinspection PyUnresolvedReferences
         await interaction.response.defer(ephemeral=True)
@@ -236,6 +238,8 @@ class ExternalCalendar(AutocompleteMixin, commands.Cog):
 
     @app_commands.command(name="server_timezone", description="Assigns a timezone to this server, used when constructing the calendar for technical purposes")
     @app_commands.autocomplete(timezone=AutocompleteMixin.timezone_autocomplete)
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
     async def tmz(self, interaction: discord.Interaction, timezone:str):
         await defer(interaction)
         upd = await self.db.update_timezone(interaction.guild_id, timezone)

@@ -5,7 +5,9 @@ from discord.ext import commands
 
 
 class AutocompleteMixin:
-    def setup_db(self, bot):
+
+    # noinspection PyAttributeOutsideInit
+    def autocomplete_setup(self, bot):
         self.db = bot.get_cog("Database")
 
     async def owned_events_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

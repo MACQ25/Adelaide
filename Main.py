@@ -9,8 +9,8 @@ import os
 import asyncio
 import calendar
 from discord.ext.commands import Context
-from objects.Event import Event
-from objects.PersistentRoleButton import PersistentRoleButton
+from data_entities.Event import Event
+from views.PersistentRoleButton import PersistentRoleButton
 
 
 class AdelaideBot(commands.Bot):

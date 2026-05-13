@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import Callable, Optional, Any
-from discord._types import ClientT
-from objects.Event import Event
+from typing import Callable, Optional
+from data_entities.Event import Event
 import discord
 from discord.ext.commands import Bot
-from discord import ui, Interaction
-from objects.EventColorEnum import EventColor
+from discord import ui
+from views.EventColorEnum import EventColor
 import datetime as dt
 
 
