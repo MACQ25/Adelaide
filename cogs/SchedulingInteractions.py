@@ -19,11 +19,6 @@ class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin)
         self.db = bot.get_cog("Database")
         self.autocomplete_setup(self.bot)
 
-    @app_commands.command(name="secret", description="a command that is secret")
-    @role_check()
-    async def secret(self, interaction: discord.Interaction):
-        await defer(interaction)
-        await interaction.followup.send("You have the dynamic role!")
 
     @app_commands.command(name="check", description="helper function to check if database is currently available")
     async def check(self, interaction: discord.Interaction):
@@ -160,6 +155,7 @@ class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin)
         everything="Deletes all currently scheduled dates without setting it to inactive, overrides dates field"
     )
     @app_commands.autocomplete( name=AutocompleteMixin.owned_events_autocomplete, dates=AutocompleteMixin.event_dates_autocomplete )
+    @role_check()
     async def delete(self, interaction: discord.Interaction, name:str, dates:str="", everything:bool=False):
         await defer(interaction)
         if len(dates) == 0 and not everything:
@@ -171,6 +167,7 @@ class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin)
     @app_commands.command(name="hiatus", description="Drops all forthcoming dates for the entered event and sets it as inactive")
     @app_commands.describe(name="Name of event class, so long cowboy", status="What is its status? (False = Hiatus)")
     @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
+    @role_check()
     async def hiatus(self, interaction: discord.Interaction, name:str, status:bool):
         await defer(interaction)
         interaction.client.dispatch("ext_event_hiatus", interaction, name, status)
@@ -179,6 +176,7 @@ class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin)
     @app_commands.command(name="delete", description="deletes all associated information to one given event, data, dates, etc")
     @app_commands.describe(name="Name The Victim")
     @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
+    @role_check()
     async def full_delete(self, interaction: discord.Interaction, name:str):
         await defer(interaction)
         interaction.client.dispatch("ext_event_full_clean", interaction, name)
@@ -222,6 +220,7 @@ class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin)
     @app_commands.command(name="update", description="allows you to update the data associated with a particular event")
     @app_commands.describe(name="name of the target event")
     @app_commands.autocomplete(name=AutocompleteMixin.owned_events_autocomplete)
+    @role_check()
     async def update_event(self,  interaction: discord.Interaction, name: str):
         await defer(interaction)
         try:
