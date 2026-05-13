@@ -13,21 +13,9 @@ def get_event_color(color: discord.Color) -> EventColor:
     )
 
 class RoleDropdown(discord.ui.Select):
-    def __init__(self, guild:discord.Guild, role_list:list[int]):
+    def __init__(self, options: list):
 
         self.value = -1
-
-        options = []
-        for r in role_list:
-            r = guild.get_role(r)  # resolve int -> Role
-            if r is None:
-                continue
-            ec = get_event_color(r.color)
-            options.append(discord.SelectOption(label=r.name, value=str(r.id), emoji=ec.emoji if ec else '👤'))
-
-        # The placeholder is what will be shown when no option is chosen
-        # The min and max values indicate we can only pick one of the three options
-        # The options parameter defines the dropdown options. We defined this above
         super().__init__(placeholder='Select One', min_values=1, max_values=1, options=options)
 
 
@@ -44,9 +32,9 @@ class RoleDropdown(discord.ui.Select):
 
 class DropdownView(discord.ui.View):
 
-    def __init__(self, guild: discord.Guild, role_list: list[int]):
+    def __init__(self, options: list):
         super().__init__()
-        self.drp = RoleDropdown(guild, role_list)
+        self.drp = RoleDropdown(options)
         self.add_item(self.drp)
 
     @discord.ui.button(label='Finish', style=discord.ButtonStyle.green, row=4)
@@ -61,9 +49,8 @@ class DropdownView(discord.ui.View):
 
 
 class PersistentRoleButton(discord.ui.View):
-    def __init__(self, role_list:list[int]=None):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.role_list = role_list
 
     @discord.ui.button(
         label="Join One",
@@ -71,5 +58,20 @@ class PersistentRoleButton(discord.ui.View):
         custom_id="persistent_button:assign_role"
     )
     async def assign_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        view = DropdownView(guild=interaction.guild, role_list=self.role_list)
+
+        guild = interaction.guild
+        db = interaction.client.get_cog("Database")
+        data =  await db.get_events(guild.id)
+
+        options = []
+        for ent in data.get("event_data"):
+            if "role_id" not in ent:
+                continue
+            r = guild.get_role(ent.get("role_id"))  # resolve int -> Role
+            if r is None:
+                continue
+            ec = get_event_color(r.color)
+            options.append(discord.SelectOption(label=r.name, value=str(r.id), emoji=ec.emoji if ec else '👤'))
+
+        view = DropdownView(options=options)
         await interaction.response.send_message("Choose one", view=view, ephemeral=True)

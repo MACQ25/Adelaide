@@ -79,7 +79,7 @@ class Database(commands.Cog):
             raise Exception("Failed to update assigned channel") from e
 
 
-    async def save_event(self, g_id, event: Event):
+    async def save_event(self, g_id, event: Event, update_mode:bool=False):
         try:
             db = self.client.get_database("scheduling")
 
@@ -128,16 +128,19 @@ class Database(commands.Cog):
                 except OSError as e:
                     print(e)
 
-            db.guilds.update_one(
-                filter={'_id': g_id, 'event_data.name': {'$ne': event.name}},
-                update={
-                    '$push': {
-                        'event_data': data
-                    }
-                }
-            )
 
-            # 2. Add dates and owner only if not already present
+            if update_mode:
+                db.guilds.update_one(
+                    filter={'_id': g_id, 'event_data': {'$elemMatch': {'name': event.name}}},
+                    update={'$set': {'event_data.$': data}}
+                )
+
+            else:
+                db.guilds.update_one(
+                    filter={'_id': g_id, 'event_data': {'$not': {'$elemMatch': {'name': event.name}}}},
+                    update={'$push': {'event_data': data}}
+                )
+
             new_dates = [
                 {
                     "date": date,
@@ -152,30 +155,17 @@ class Database(commands.Cog):
                 for ind, date in enumerate(event.dates)
             ]
 
-            existing = db.guilds.find_one(
-                {'_id': g_id},
-                {f'event_days.{event.name}': 1}
-            )
-
-            existing_dates = set()
-            if existing:
-                days = existing.get('event_days', {}).get(event.name, [])
-                existing_dates = {d['date'] for d in days}
-
-            filtered_dates = [d for d in new_dates if d['date'] not in existing_dates]
-
-            if filtered_dates:
-                db.guilds.update_one(
-                    filter={'_id': g_id},
-                    update={
-                        '$push': {
-                            f'event_days.{event.name}': {'$each': filtered_dates}
-                        },
-                        '$addToSet': {
-                            f'event_owners.{event.owner}': event.name
-                        }
+            db.guilds.update_one(
+                filter={'_id': g_id},
+                update={
+                    '$set': {
+                        f'event_days.{event.name}': new_dates
+                    },
+                    '$addToSet': {
+                        f'event_owners.{event.owner}': event.name
                     }
-                )
+                }
+            )
 
         except Exception as e:
             print(e)
