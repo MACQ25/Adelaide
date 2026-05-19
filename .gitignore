@@ -2,3 +2,6 @@
 secrets/
 practice_scripts/
 images/
+.env
+deploy/logs/
+.vscode

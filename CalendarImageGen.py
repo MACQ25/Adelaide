@@ -5,6 +5,8 @@ from datetime import date as dt
 import calendar
 import asyncio
 
+from utils.RuntimeConfig import ensure_directories
+
 
 def channel(i, c, size, startFill, stopFill, degree=0.2):
     """calculate the value of a single color channel for a single pixel"""
@@ -209,6 +211,7 @@ async def draw(guild_id: int, events: list):
             j += 1
             r = rows[j]
 
+    ensure_directories("images/calendar")
     file_output = f"images/calendar/{str(guild_id)}.png"
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, img.save, file_output, "PNG")

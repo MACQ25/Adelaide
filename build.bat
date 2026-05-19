@@ -1,8 +1,7 @@
 @echo off
-echo Generating requirements.txt...
-.venv\Scripts\pipreqs.exe . --force --encoding latin-1 --ignore .venv
+echo Building Adelaide image with Docker Compose...
+docker compose build
 
-echo Building Docker image...
-docker build -t adelaide .
+if errorlevel 1 exit /b %errorlevel%
 
 echo Done!

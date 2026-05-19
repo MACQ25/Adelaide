@@ -10,6 +10,7 @@ import asyncio
 import calendar
 from discord.ext.commands import Context
 from data_entities.Event import Event
+from utils.RuntimeConfig import ensure_directories, read_required_setting
 from views.PersistentRoleButton import PersistentRoleButton
 
 
@@ -157,7 +158,7 @@ async def perform_cleanup(cleanup_func: Optional[Callable] = None):
         await asyncio.sleep(60000)
 
 
-tkn = os.getenv("BOT_TOKEN", open("secrets/token.tkn").readline().strip())
+tkn = read_required_setting("BOT_TOKEN", "secrets/token.tkn")
 
 async def load():
     for filename in os.listdir("./cogs"):
@@ -166,6 +167,8 @@ async def load():
 
 
 async def main():
+    ensure_directories("images/calendar", "images/event_thumbnail")
+
     async with bot:
         await load()
         await bot.start(tkn)

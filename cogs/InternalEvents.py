@@ -7,6 +7,7 @@ from utils.AutocompleteMixin import AutocompleteMixin
 from data_entities.Event import Event
 from utils.InteractionDefer import defer
 from utils.RoleCheck import role_check
+from utils.RuntimeConfig import ensure_directories
 
 
 async def process_image(image: discord.Attachment, interaction: discord.Interaction) -> tuple[str, bytes]:
@@ -21,6 +22,7 @@ async def process_image(image: discord.Attachment, interaction: discord.Interact
 
 
 async def save_thumbnail(file_name: str, image_bytes: bytes):
+    ensure_directories("images/event_thumbnail")
     with open(f"images/event_thumbnail/{file_name}", "wb") as f:
         f.write(image_bytes)
 

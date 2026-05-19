@@ -3,3 +3,7 @@
 __pycache__
 *.pyc
 .git
+.env
+deploy/logs/
+images/
+secrets/
