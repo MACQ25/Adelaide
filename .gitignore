@@ -2,3 +2,6 @@
 python/secrets/
 python/practice_scripts/
 python/images/
+.env
+deploy/logs/
+.vscode

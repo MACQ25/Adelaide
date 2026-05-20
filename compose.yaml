@@ -1,0 +1,12 @@
+services:
+  adelaide:
+    container_name: adelaide
+    image: adelaide:latest
+    build:
+      context: ./python
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
+      DB_TOKEN: ${DB_TOKEN:?DB_TOKEN is required}
+    volumes:
+      - ./images:/app/images

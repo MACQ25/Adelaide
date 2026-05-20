@@ -10,7 +10,8 @@ import asyncio
 import calendar
 from discord.ext.commands import Context
 from data_entities.Event import Event
-from views.PersistentButtonRow import PersistentButtonRow
+from utils.RuntimeConfig import ensure_directories, read_required_setting
+from views.PersistentRoleButton import PersistentRoleButton
 
 
 class AdelaideBot(commands.Bot):
@@ -22,7 +23,7 @@ class AdelaideBot(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned_or('/'), description=description, intents=intents)
 
     async def setup_hook(self) -> None:
-        self.add_view(PersistentButtonRow())
+        self.add_view(PersistentRoleButton())
 
 
 bot = AdelaideBot()
@@ -157,7 +158,7 @@ async def perform_cleanup(cleanup_func: Optional[Callable] = None):
         await asyncio.sleep(60000)
 
 
-tkn = os.getenv("BOT_TOKEN", open("secrets/token.tkn").readline().strip())
+tkn = read_required_setting("BOT_TOKEN", "secrets/token.tkn")
 
 async def load():
     for filename in os.listdir("./cogs"):
@@ -166,6 +167,8 @@ async def load():
 
 
 async def main():
+    ensure_directories("images/calendar", "images/event_thumbnail")
+
     async with bot:
         await load()
         await bot.start(tkn)

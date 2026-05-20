@@ -1,0 +1,4 @@
+discord.py>=2.5,<3
+Pillow>=11,<12
+pymongo[srv]>=4.9,<5
+tzdata>=2025.2
