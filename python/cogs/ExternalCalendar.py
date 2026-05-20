@@ -11,7 +11,7 @@ from utils.ErrorHandlerMixin import ErrorHandlerMixin
 from data_entities.Event import Event
 from CalendarImageGen import draw
 from cogs.InternalEvents import role_deletion, scheduled_events
-from views.PersistentRoleButton import PersistentRoleButton
+from views.PersistentButtonRow import PersistentButtonRow
 from utils.RoleCheck import role_check
 
 
@@ -106,7 +106,7 @@ class ExternalCalendar(ErrorHandlerMixin, AutocompleteMixin, commands.Cog):
                 )
                 embed.set_footer(text=f"Last updated: {upd_time.strftime('%Y-%m-%d %H:%M')}, {tmz}")
 
-                msg = await a_channel.send(embed=embed, file=file, view=PersistentRoleButton())
+                msg = await a_channel.send(embed=embed, file=file, view=PersistentButtonRow())
                 await msg.pin()
 
                 if interaction is not None:

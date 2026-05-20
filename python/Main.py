@@ -10,7 +10,7 @@ import asyncio
 import calendar
 from discord.ext.commands import Context
 from data_entities.Event import Event
-from views.PersistentRoleButton import PersistentRoleButton
+from views.PersistentButtonRow import PersistentButtonRow
 
 
 class AdelaideBot(commands.Bot):
@@ -22,7 +22,7 @@ class AdelaideBot(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned_or('/'), description=description, intents=intents)
 
     async def setup_hook(self) -> None:
-        self.add_view(PersistentRoleButton())
+        self.add_view(PersistentButtonRow())
 
 
 bot = AdelaideBot()

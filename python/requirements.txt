@@ -1,0 +1,5 @@
+aiohttp==3.13.3
+discord.py==2.7.1
+numpy==2.4.4
+Pillow==12.2.0
+pymongo==4.17.0

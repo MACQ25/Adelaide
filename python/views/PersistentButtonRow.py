@@ -3,7 +3,8 @@ import discord
 from discord import Interaction
 from discord._types import ClientT
 from discord.ext import commands
-from views.EventColorEnum import EventColor
+
+from python.views.EventColorEnum import EventColor
 
 
 def get_event_color(color: discord.Color) -> EventColor:
@@ -48,9 +49,10 @@ class DropdownView(discord.ui.View):
         await interaction.response.edit_message(content="Assignment done", view=None)
 
 
-class PersistentRoleButton(discord.ui.View):
+class PersistentButtonRow(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+
 
     @discord.ui.button(
         label="Join One",
@@ -78,3 +80,4 @@ class PersistentRoleButton(discord.ui.View):
             await interaction.response.send_message("Choose one", view=view, ephemeral=True)
         else:
             await interaction.response.send_message("No events with an associated role, sorry :p", ephemeral=True)
+
