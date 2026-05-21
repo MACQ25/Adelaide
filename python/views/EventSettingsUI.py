@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from typing import Callable, Optional
-from data_entities.Event import Event
+from python.data_entities.Event import Event
 import discord
 from discord.ext.commands import Bot
 from discord import ui
-from views.EventColorEnum import EventColor
+from EventColorEnum import EventColor
 import datetime as dt
 
 
@@ -167,7 +167,8 @@ class FrequencySelect(ui.ActionRow['EventSettings']):
         options=[
             discord.SelectOption(label="Picked", description="the event will occur on a given set of days", value=str(1)),
             discord.SelectOption(label="Weekly", description="the event will occur every week at a given hour", value=str(2)),
-            discord.SelectOption(label="Monthly", description="the event will occur every month at a given hour", value=str(3))
+            discord.SelectOption(label="Biweekly", description="the event will occur every two weeks at a given hour", value=str(3)),
+            discord.SelectOption(label="Monthly", description="the event will occur every month at a given hour", value=str(4))
         ]
     )
     async def select_mode(self, interaction: discord.Interaction[Bot], select: discord.ui.Select) -> None:
@@ -606,15 +607,17 @@ class EventSettings(ui.LayoutView):
         # Then delete the settings panel
         self.stop()
 
-        if int(self.data.frequency) == 3:
+        f_val = int(self.data.frequency)
+
+        if f_val == 4:
             self.data.dates = [self.data.dates[0]]
-        elif int(self.data.frequency) == 2:
+        elif f_val > 1:
             starting_from = self.data.dates[0]
 
             # Adding a +1 hoping no bugs to arise when it comes to February
             new_batch = list([starting_from])
             for x in range(5):
-                n_date = starting_from + dt.timedelta(weeks=x + 1)
+                n_date = starting_from + dt.timedelta(weeks=x + 1 if f_val == 2 else 2)
                 if n_date.month == starting_from.month:
                     new_batch.append(n_date)
 

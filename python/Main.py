@@ -1,9 +1,7 @@
 import datetime as dt
-from datetime import tzinfo
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo
 import discord
-from aiohttp.log import client_logger
 from discord.ext import commands
 import os
 import asyncio
@@ -11,7 +9,7 @@ import calendar
 from discord.ext.commands import Context
 from data_entities.Event import Event
 from utils.RuntimeConfig import ensure_directories, read_required_setting
-from python.views.PersistentButtonRow import PersistentButtonRow
+from views.PersistentButtonRow import PersistentButtonRow
 
 
 class AdelaideBot(commands.Bot):
@@ -80,7 +78,8 @@ async def renew_frequents():
             cur = dt.datetime.today().astimezone(tz)
             starting_from: dt.datetime = date_sample.get("date").astimezone(tz)
 
-            if event.get("frequency") == 2:
+            frequency = event.get("frequency")
+            if frequency in [2, 3]:
                 wd = starting_from.weekday()
                 cal = calendar.monthcalendar(cur.year, cur.month)
 
@@ -93,7 +92,7 @@ async def renew_frequents():
                 new_batch = list([starting_from])
 
                 for x in range(4):
-                    n_date = starting_from + dt.timedelta(weeks=x + 1)
+                    n_date = starting_from + dt.timedelta(weeks=x + 1 if frequency == 2 else 2)
                     if n_date.month < starting_from.month + 1:
                         new_batch.append(n_date)
                 dates = new_batch

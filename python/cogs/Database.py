@@ -7,11 +7,9 @@ import discord
 from bson import CodecOptions
 from discord import VoiceChannel, TextChannel, CategoryChannel
 from pymongo import MongoClient, UpdateOne
-from pymongo.server_api import ServerApi
 from discord.ext import commands
 from InternalEvents import save_thumbnail
 from python.data_entities.Event import Event
-from python.utils.RuntimeConfig import read_required_setting
 
 # Didn't use the following install, if problems arise because of the missing [srv] do it later
 # python -m pip install "pymongo[srv]"
