@@ -3,14 +3,14 @@ from zoneinfo import ZoneInfo
 import discord
 from discord.ext import commands
 from discord import app_commands
-from cogs.InternalEvents import process_image
-from utils.AutocompleteMixin import AutocompleteMixin
-from utils.ErrorHandlerMixin import ErrorHandlerMixin
-from data_entities.Event import Event, format_dates
-from views.EventColorEnum import EventColor
-from views.EventSettingsUI import EventSettings
-from utils.RoleCheck import role_check
-from utils.InteractionDefer import defer
+from InternalEvents import process_image
+from python.utils.AutocompleteMixin import AutocompleteMixin
+from python.utils.ErrorHandlerMixin import ErrorHandlerMixin
+from python.data_entities.Event import Event, format_dates
+from python.views.EventColorEnum import EventColor
+from python.views.EventSettingsUI import EventSettings
+from python.utils.RoleCheck import role_check
+from python.utils.InteractionDefer import defer
 
 
 class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin):

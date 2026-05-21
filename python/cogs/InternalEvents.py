@@ -3,11 +3,11 @@ import uuid
 import discord
 from discord import app_commands
 from discord.ext import commands
-from utils.AutocompleteMixin import AutocompleteMixin
-from data_entities.Event import Event
-from utils.InteractionDefer import defer
-from utils.RoleCheck import role_check
-from utils.RuntimeConfig import ensure_directories
+from python.utils.AutocompleteMixin import AutocompleteMixin
+from python.data_entities.Event import Event
+from python.utils.InteractionDefer import defer
+from python.utils.RoleCheck import role_check
+from python.utils.RuntimeConfig import ensure_directories
 
 
 async def process_image(image: discord.Attachment, interaction: discord.Interaction) -> tuple[str, bytes]:
@@ -282,9 +282,9 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
     async def managerial_role(self, interaction:discord.Interaction, role:discord.Role):
         await defer(interaction)
         if await self.db.update_associated_role(interaction.guild_id, role.id):
-            await interaction.followup.send(f"Assigned Role Updated To <@&{role.id}>")
+            await interaction.followup.send(f"Assigned Role Updated To <@&{role.id}>", ephemeral=True)
         else:
-            await interaction.followup.send("Role assignment failed")
+            await interaction.followup.send("Role assignment failed", ephemeral=True)
 
 
     @app_commands.default_permissions(administrator=True)
@@ -293,9 +293,25 @@ class InternalEvents(AutocompleteMixin, commands.Cog):
     async def remove_role(self, interaction:discord.Interaction):
         await defer(interaction)
         if await self.db.delete_assigned_role(interaction.guild_id):
-            await interaction.followup.send(f"No role is associated with the use of this bot now")
+            await interaction.followup.send(f"No role is associated with the use of this bot now", ephemeral=True)
         else:
-            await interaction.followup.send("There was no role associated with it already")
+            await interaction.followup.send("There was no role associated with it already", ephemeral=True)
+
+
+    @app_commands.command(name="propagate_role", description="Allows a user with the role assigned to interact with this bot to grant another the same role")
+    @role_check()
+    async def share_role(self, interaction: discord.Interaction, target: discord.Member):
+        await defer(interaction)
+        permitted_id = await self.db.get_assigned_role(interaction.guild_id)
+        if permitted_id is None:
+            await interaction.followup.send(f"No role is associated with the use of this bot yet, nothing shall be assigned! :p", ephemeral=True)
+        else:
+            target_role: discord.Role = await interaction.guild.fetch_role(permitted_id)
+            try:
+                await target.add_roles(target_role)
+                await interaction.followup.send(f"<@&{target_role.id}> has been assigned to <@{target.id}>", ephemeral=True)
+            except Exception as e:
+                await interaction.followup.send("Operation failed, user may already have the role", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

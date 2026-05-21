@@ -5,3 +5,4 @@ python/images/
 .env
 deploy/logs/
 .vscode
+mongo/dump

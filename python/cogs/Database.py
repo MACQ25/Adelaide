@@ -9,9 +9,9 @@ from discord import VoiceChannel, TextChannel, CategoryChannel
 from pymongo import MongoClient, UpdateOne
 from pymongo.server_api import ServerApi
 from discord.ext import commands
-from cogs.InternalEvents import save_thumbnail
-from data_entities.Event import Event
-from utils.RuntimeConfig import read_required_setting
+from InternalEvents import save_thumbnail
+from python.data_entities.Event import Event
+from python.utils.RuntimeConfig import read_required_setting
 
 # Didn't use the following install, if problems arise because of the missing [srv] do it later
 # python -m pip install "pymongo[srv]"
@@ -21,8 +21,7 @@ class Database(commands.Cog):
     def __init__(self, bot):
 
         self.bot = bot
-        self.tkn = read_required_setting("DB_TOKEN", "./secrets/mongoAccount.tkn")
-        self.client = MongoClient("mongodb+srv://{}@cluster0.x5r2p5q.mongodb.net/?appName=Cluster0".format(self.tkn), server_api=ServerApi('1'))
+        self.client = MongoClient(os.getenv("DB_TOKEN"))
 
 
     async def ping(self):

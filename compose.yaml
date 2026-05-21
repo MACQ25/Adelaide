@@ -9,4 +9,22 @@ services:
       BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
       DB_TOKEN: ${DB_TOKEN:?DB_TOKEN is required}
     volumes:
-      - ./images:/app/images
+      - ./python/images:/app/images
+    depends_on:
+      - mongo
+  mongo:
+    container_name: mongo
+    image: mongo:latest
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?MONGO_USER is required}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:?MONGO_PASS is required}
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo/dump:/dump
+      - ./mongo/init:/docker-entrypoint-initdb.d
+    ports:
+      - "27017:27017"
+
+volumes:
+  mongo_data:
