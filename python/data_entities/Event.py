@@ -13,11 +13,11 @@ def format_dates(dates:str, start_time:int=12, tmz_s=None):
         try:
             spl = [int(itm.strip()) for itm in d.split("-")]
             if len(spl) == 1:
-                date_stamp = dt.datetime(current.year, current.month, spl[0], hour=start_time, tzinfo=tz)
+                date_stamp = dt.datetime(current.year, current.month, int(spl[0]), hour=start_time, tzinfo=tz)
             elif len(spl) == 2:
-                date_stamp = dt.datetime(current.year, spl[0], spl[1], hour=start_time, tzinfo=tz)
+                date_stamp = dt.datetime(current.year, int(spl[0]), int(spl[1]), hour=start_time, tzinfo=tz)
             else:
-                date_stamp = dt.datetime(spl[0], spl[1], spl[2], hour=start_time, tzinfo=tz)
+                date_stamp = dt.datetime(int(spl[0]), int(spl[1]), int(spl[2]), hour=start_time, tzinfo=tz)
             date_list[i] = date_stamp
         except TypeError:
             raise TypeError()

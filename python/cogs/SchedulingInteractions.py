@@ -33,7 +33,8 @@ class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin)
         mode=[
             app_commands.Choice(name="picked", value=1),
             app_commands.Choice(name="weekly", value=2),
-            app_commands.Choice(name="monthly", value=3),
+            app_commands.Choice(name="biweekly", value=3),
+            app_commands.Choice(name="monthly", value=4),
         ]
     )
     @app_commands.describe(
@@ -78,7 +79,8 @@ class SchedulingInteractions(ErrorHandlerMixin, commands.Cog, AutocompleteMixin)
         mode=[
             app_commands.Choice(name="picked", value=1),
             app_commands.Choice(name="weekly", value=2),
-            app_commands.Choice(name="monthly", value=3),
+            app_commands.Choice(name="biweekly", value=3),
+            app_commands.Choice(name="monthly", value=4),
         ]
     )
     @app_commands.describe(

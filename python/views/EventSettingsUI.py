@@ -452,7 +452,7 @@ class EventSettings(ui.LayoutView):
 
         return all([
             self.data.name,
-            self.data.color,
+            (self.data.color and None not in self.data.color),
             self.data.frequency,
             len(self.data.dates) > 0,
             str(self.data.duration).isnumeric(),
