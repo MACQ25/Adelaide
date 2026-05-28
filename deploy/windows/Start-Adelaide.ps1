@@ -22,10 +22,10 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 if (-not (Test-Path '.env')) {
-    throw 'Missing .env file. Copy .env.example to .env and provide BOT_TOKEN and DB_TOKEN.'
+    throw 'Missing .env file. Copy .env.example to .env and provide BOT_TOKEN, DB_TOKEN, MONGO_USER and MONGO_PASS.'
 }
 
-foreach ($path in @('images', 'images\calendar', 'images\event_thumbnail')) {
+foreach ($path in @('python\images', 'python\images\calendar', 'python\images\event_thumbnail')) {
     New-Item -ItemType Directory -Force -Path $path | Out-Null
 }
 
