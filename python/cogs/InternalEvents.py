@@ -3,11 +3,11 @@ import uuid
 import discord
 from discord import app_commands
 from discord.ext import commands
-from python.utils.AutocompleteMixin import AutocompleteMixin
-from python.data_entities.Event import Event
-from python.utils.InteractionDefer import defer
-from python.utils.RoleCheck import role_check
-from python.utils.RuntimeConfig import ensure_directories
+from utils.AutocompleteMixin import AutocompleteMixin
+from data_entities.Event import Event
+from utils.InteractionDefer import defer
+from utils.RoleCheck import role_check
+from utils.RuntimeConfig import ensure_directories
 
 
 async def process_image(image: discord.Attachment, interaction: discord.Interaction) -> tuple[str, bytes]:

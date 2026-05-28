@@ -5,14 +5,14 @@ from zoneinfo import ZoneInfo
 import discord
 from discord.ext import commands
 from discord import app_commands
-from python.utils.InteractionDefer import defer
-from python.utils.AutocompleteMixin import AutocompleteMixin
-from python.utils.ErrorHandlerMixin import ErrorHandlerMixin
-from python.data_entities.Event import Event
-from python.CalendarImageGen import draw
-from InternalEvents import role_deletion, scheduled_events
-from python.views.PersistentButtonRow import PersistentButtonRow
-from python.utils.RoleCheck import role_check
+from utils.InteractionDefer import defer
+from utils.AutocompleteMixin import AutocompleteMixin
+from utils.ErrorHandlerMixin import ErrorHandlerMixin
+from data_entities.Event import Event
+from CalendarImageGen import draw
+from cogs.InternalEvents import role_deletion, scheduled_events
+from views.PersistentButtonRow import PersistentButtonRow
+from utils.RoleCheck import role_check
 
 
 async def check_permissions_assigned(bot, channel: discord.TextChannel) -> dict:

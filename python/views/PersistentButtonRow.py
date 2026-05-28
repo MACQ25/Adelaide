@@ -4,7 +4,7 @@ from discord import Interaction
 from discord._types import ClientT
 from discord.ext import commands
 
-from python.views.EventColorEnum import EventColor
+from views.EventColorEnum import EventColor
 
 
 def get_event_color(color: discord.Color) -> EventColor:

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from typing import Callable, Optional
-from python.data_entities.Event import Event
+from data_entities.Event import Event
 import discord
 from discord.ext.commands import Bot
 from discord import ui
-from EventColorEnum import EventColor
+from views.EventColorEnum import EventColor
 import datetime as dt
 
 

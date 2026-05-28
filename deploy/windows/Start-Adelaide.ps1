@@ -32,7 +32,12 @@ foreach ($path in @('images', 'images\calendar', 'images\event_thumbnail')) {
 $dockerService = Get-Service -Name 'com.docker.service' -ErrorAction SilentlyContinue
 if ($dockerService -and $dockerService.Status -ne 'Running') {
     Write-Log 'Starting com.docker.service.'
-    Start-Service -Name 'com.docker.service'
+    try {
+        Start-Service -Name 'com.docker.service'
+    }
+    catch {
+        Write-Log "Could not start com.docker.service: $($_.Exception.Message)"
+    }
 }
 
 $dockerReady = $false
